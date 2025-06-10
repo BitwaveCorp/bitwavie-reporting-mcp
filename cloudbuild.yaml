@@ -1,0 +1,33 @@
+steps:
+# Build the container image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/reporting-mcp:$COMMIT_SHA', '-f', 'cloudbuild.Dockerfile', '.']
+  dir: 'reporting-mcp'
+
+# Push the container image to Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/reporting-mcp:$COMMIT_SHA']
+
+# Deploy container image to Cloud Run
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+  - 'run'
+  - 'deploy'
+  - 'reporting-mcp'
+  - '--image'
+  - 'gcr.io/$PROJECT_ID/reporting-mcp:$COMMIT_SHA'
+  - '--region'
+  - 'us-central1'
+  - '--platform'
+  - 'managed'
+  - '--allow-unauthenticated'
+  - '--set-env-vars'
+  - 'GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,BIGQUERY_DATASET_ID=${_BIGQUERY_DATASET_ID},BIGQUERY_TABLE_ID=${_BIGQUERY_TABLE_ID}'
+
+images:
+- 'gcr.io/$PROJECT_ID/reporting-mcp:$COMMIT_SHA'
+
+substitutions:
+  _BIGQUERY_DATASET_ID: your_dataset_id  # Default value, will be overridden by --substitutions
+  _BIGQUERY_TABLE_ID: your_table_id      # Default value, will be overridden by --substitutions
