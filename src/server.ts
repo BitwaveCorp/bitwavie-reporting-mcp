@@ -3,9 +3,14 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { QueryParser } from './services/query-parser.js';
+import { BigQueryClient } from './services/bigquery-client.js';
+import { BigQueryConfig, ColumnMapping, QueryParseResult, ReportParameters } from './types/actions-report.js';
 
 export class ReportingMCPServer {
   private server: Server;
+  private queryParser: QueryParser;
+  private bigQueryClient: BigQueryClient;
 
   constructor() {
     this.server = new Server(
@@ -20,7 +25,37 @@ export class ReportingMCPServer {
       }
     );
 
+    // Initialize services
+    this.queryParser = new QueryParser();
+    this.bigQueryClient = new BigQueryClient();
+    
     this.setupHandlers();
+    this.initializeBigQueryClient();
+  }
+  
+  private async initializeBigQueryClient(): Promise<void> {
+    try {
+      const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+      const datasetId = process.env.BIGQUERY_DATASET_ID;
+      const tableId = process.env.BIGQUERY_TABLE_ID;
+      
+      if (!projectId || !datasetId || !tableId) {
+        console.error('BigQuery configuration missing. Check environment variables.');
+        return;
+      }
+      
+      const config: BigQueryConfig = {
+        projectId,
+        datasetId,
+        tableId,
+        // Only add keyFilename if it's defined
+        ...(process.env.GOOGLE_APPLICATION_CREDENTIALS ? { keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS } : {})
+      };
+      
+      await this.bigQueryClient.configure(config);
+    } catch (error) {
+      console.error('Failed to initialize BigQuery client:', error);
+    }
   }
 
   private setupHandlers(): void {
@@ -139,13 +174,158 @@ export class ReportingMCPServer {
 
   private async handleAnalyzeData(args: any): Promise<any> {
     const { query = '' } = args;
-    return {
-      content: [
-        {
+    
+    try {
+      if (!query || query.trim().length === 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: '❌ **Error**: Please provide a valid query.'
+          }]
+        };
+      }
+      
+      // Parse the natural language query
+      const parseResult = await this.queryParser.parseQuery(query);
+      
+      // Check if column mappings need confirmation
+      const needsConfirmation = parseResult.columns.some(col => !col.confirmed);
+      if (needsConfirmation) {
+        return this.formatColumnMappingConfirmation(parseResult, query);
+      }
+      
+      // Execute the query
+      const currentDate = new Date().toISOString().split('T')[0];
+      
+      // Create parameters object with type assertion to avoid TypeScript errors
+      const parameters = {
+        runId: '*' as string
+      };
+      
+      // Add date parameters
+      if (parseResult.timeRange?.start) {
+        (parameters as any).startDate = parseResult.timeRange.start;
+      }
+      
+      if (parseResult.timeRange?.end) {
+        (parameters as any).endDate = parseResult.timeRange.end;
+        (parameters as any).asOfDate = parseResult.timeRange.end;
+      } else {
+        (parameters as any).asOfDate = currentDate;
+      }
+      
+      // Cast the final object to the expected type
+      const typedParameters = parameters as ReportParameters;
+      
+      const queryResult = await this.bigQueryClient.executeAnalyticalQuery(parseResult, typedParameters);
+      
+      // Format and return the results
+      return this.formatQueryResults(queryResult, parseResult, query);
+    } catch (error) {
+      console.error('Error analyzing data:', error);
+      return {
+        content: [{
           type: 'text',
-          text: `📊 **Query Received**\n\nQuery: "${query}"\n\n✅ MCP server is working! Natural language processing implementation coming next.`,
-        },
-      ],
+          text: `❌ **Error Processing Query**\n\n${error instanceof Error ? error.message : String(error)}\n\nPlease try rephrasing your query or check the server logs for more details.`
+        }]
+      };
+    }
+  }
+  
+  private formatColumnMappingConfirmation(parseResult: QueryParseResult, originalQuery: string): any {
+    const unconfirmedColumns = parseResult.columns.filter(col => !col.confirmed);
+    
+    let text = `📋 **Column Mapping Confirmation Needed**\n\nFor your query: "${originalQuery}"\n\nI need to confirm the following column mappings:\n\n`;
+    
+    unconfirmedColumns.forEach((col, index) => {
+      text += `${index + 1}. Term: "${col.userTerm}"\n`;
+      text += `   Maps to: ${col.mappedColumns.join(', ')}\n`;
+      text += `   Description: ${col.description}\n\n`;
+    });
+    
+    text += 'Please confirm if these mappings are correct, or suggest alternatives.';
+    
+    return {
+      content: [{
+        type: 'text',
+        text
+      }]
+    };
+  }
+  
+  private formatQueryResults(queryResult: any, parseResult: QueryParseResult, originalQuery: string): any {
+    if (!queryResult.success) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ **Query Error**\n\n${queryResult.error?.message || 'Unknown error'}\n\n${queryResult.error?.suggestions ? 'Suggestions:\n- ' + queryResult.error.suggestions.join('\n- ') : ''}`
+        }]
+      };
+    }
+    
+    // If no data returned
+    if (!queryResult.data || (Array.isArray(queryResult.data) && queryResult.data.length === 0)) {
+      return {
+        content: [{
+          type: 'text',
+          text: `📊 **No Data Found**\n\nYour query: "${originalQuery}"\n\nNo matching data was found. Try adjusting your filters or time range.`
+        }]
+      };
+    }
+    
+    // Format successful results
+    let resultText = `📊 **Query Results**\n\nQuery: "${originalQuery}"\n\n`;
+    
+    // Add summary if available
+    if (queryResult.summary) {
+      resultText += `${queryResult.summary}\n\n`;
+    }
+    
+    // Format data as a table or list depending on structure
+    if (Array.isArray(queryResult.data)) {
+      if (queryResult.data.length > 10) {
+        resultText += `Showing top 10 of ${queryResult.data.length} results:\n\n`;
+      }
+      
+      // Create table header if data is tabular
+      const sampleItem = queryResult.data[0];
+      if (sampleItem && typeof sampleItem === 'object') {
+        const headers = Object.keys(sampleItem);
+        resultText += '| ' + headers.join(' | ') + ' |\n';
+        resultText += '| ' + headers.map(() => '---').join(' | ') + ' |\n';
+        
+        // Add rows (limit to 10)
+        const displayData = queryResult.data.slice(0, 10);
+        displayData.forEach((item: Record<string, any>) => {
+          resultText += '| ' + headers.map(h => item[h]?.toString() || '').join(' | ') + ' |\n';
+        });
+      } else {
+        // Simple list for non-object data
+        const displayData = queryResult.data.slice(0, 10);
+        displayData.forEach((item: any, index: number) => {
+          resultText += `${index + 1}. ${item}\n`;
+        });
+      }
+    } else if (typeof queryResult.data === 'object') {
+      // Handle single object result
+      Object.entries(queryResult.data).forEach(([key, value]) => {
+        resultText += `**${key}**: ${value}\n`;
+      });
+    } else {
+      // Handle scalar result
+      resultText += `Result: ${queryResult.data}\n`;
+    }
+    
+    // Add metadata
+    resultText += `\n**Execution time**: ${queryResult.metadata.execution_time_ms}ms | `;
+    resultText += `**Rows processed**: ${queryResult.metadata.rows_processed} | `;
+    resultText += queryResult.metadata.cached ? '**Cached result**' : '**Fresh result**';
+    
+    return {
+      content: [{
+        type: 'text',
+        text: resultText
+      }]
     };
   }
 
