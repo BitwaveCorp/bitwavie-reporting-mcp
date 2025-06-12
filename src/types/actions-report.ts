@@ -180,26 +180,81 @@ export interface QueryRequest {
 }
 
 export interface ColumnMapping {
-  userTerm: string;
-  mappedColumns: string[];
-  description: string;
-  confirmed: boolean;
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'timestamp' | 'date';
+  displayName: string;
+  description?: string;
+  isAggregation?: boolean;
+  isGroupBy?: boolean;
+  userTerm?: string;
+  mappedColumns?: string[];
+  confirmed?: boolean;
+}
+
+export type TimeRange = {
+  type: 'relative' | 'absolute';
+  value: string;
+  startDate?: string;
+  endDate?: string;
+  [key: string]: string; // Allow additional string properties
+};
+
+export type FilterOperator = 
+  | '=' | '!=' | '<>' 
+  | '>' | '<' | '>=' | '<=' 
+  | 'IN' | 'NOT IN' 
+  | 'LIKE' | 'NOT LIKE' 
+  | 'BETWEEN' 
+  | 'IS NULL' | 'IS NOT NULL'
+  | 'IS DISTINCT FROM' | 'IS NOT DISTINCT FROM';
+
+export type FilterCondition = {
+  column: string;
+  operator: FilterOperator;
+  value: any;
+  logicalOperator?: 'AND' | 'OR';
+  not?: boolean;
+};
+
+export type Aggregation = {
+  column: string;
+  function: 'sum' | 'count' | 'avg' | 'min' | 'max';
+  alias?: string;
+  distinct?: boolean;
+};
+
+export type GroupByClause = {
+  column: string;
+  order?: 'ASC' | 'DESC';
+  interval?: 'day' | 'week' | 'month' | 'year' | 'quarter';
+};
+
+export type OrderByClause = {
+  column: string;
+  direction: 'ASC' | 'DESC';
+  nulls?: 'FIRST' | 'LAST';
+};
+
+export interface QueryMetadata {
+  query: string;
+  timestamp: string;
+  isDistinct?: boolean;
+  isCount?: boolean;
+  hasSubquery?: boolean;
 }
 
 export interface QueryParseResult {
-  intent: 'aggregation' | 'filter' | 'comparison' | 'trend';
-  assets?: string[];
-  timeRange?: {
-    start?: string;
-    end?: string;
-  };
-  wallets?: {
-    include?: string[];
-    exclude?: string[];
-  };
-  aggregationType?: 'sum' | 'count' | 'avg' | 'min' | 'max';
+  intent: 'list' | 'filter' | 'aggregation' | 'comparison' | 'trend' | 'balance';
+  assets: string[];
+  timeRange?: TimeRange;
+  filters: FilterCondition[];
+  aggregations: Aggregation[];
+  groupBy: GroupByClause[];
+  orderBy: OrderByClause[];
   columns: ColumnMapping[];
-  filters: Record<string, any>;
+  metadata: QueryMetadata;
+  aggregationType?: 'sum' | 'count' | 'avg' | 'min' | 'max';
+  limit?: number;
 }
 
 export interface QueryResult {

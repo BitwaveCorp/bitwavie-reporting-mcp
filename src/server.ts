@@ -173,7 +173,7 @@ export class ReportingMCPServer {
   }
 
   private async handleAnalyzeData(args: any): Promise<any> {
-    const { query = '' } = args;
+    const { query = '', confirmedMappings } = args;
     
     try {
       if (!query || query.trim().length === 0) {
@@ -186,12 +186,17 @@ export class ReportingMCPServer {
       }
       
       // Parse the natural language query
-      const parseResult = await this.queryParser.parseQuery(query);
+      let parseResult = await this.queryParser.parseQuery(query);
       
-      // Check if column mappings need confirmation
+      // Apply any confirmed mappings if provided
+      if (confirmedMappings) {
+        parseResult = this.applyConfirmedMappings(parseResult, confirmedMappings);
+      }
+      
+      // Check if we still need column mapping confirmation
       const needsConfirmation = parseResult.columns.some(col => !col.confirmed);
       if (needsConfirmation) {
-        return this.formatColumnMappingConfirmation(parseResult, query);
+        return await this.formatColumnMappingConfirmation(parseResult, query);
       }
       
       // Execute the query
@@ -232,27 +237,87 @@ export class ReportingMCPServer {
     }
   }
   
-  private formatColumnMappingConfirmation(parseResult: QueryParseResult, originalQuery: string): any {
+  private async formatColumnMappingConfirmation(parseResult: QueryParseResult, originalQuery: string): Promise<any> {
     const unconfirmedColumns = parseResult.columns.filter(col => !col.confirmed);
     
+    // Get available columns from BigQuery
+    let availableColumns: string[] = [];
+    try {
+      availableColumns = await this.bigQueryClient.getAvailableColumns();
+    } catch (error) {
+      console.error('Error fetching available columns:', error);
+      // Continue with empty array if we can't fetch columns
+    }
+
     let text = `📋 **Column Mapping Confirmation Needed**\n\nFor your query: "${originalQuery}"\n\nI need to confirm the following column mappings:\n\n`;
     
-    unconfirmedColumns.forEach((col, index) => {
-      text += `${index + 1}. Term: "${col.userTerm}"\n`;
-      text += `   Maps to: ${col.mappedColumns.join(', ')}\n`;
-      text += `   Description: ${col.description}\n\n`;
-    });
+    // Process each unconfirmed column
+    const columnMappings = [];
+    for (const col of unconfirmedColumns) {
+      const userTerm = col.userTerm || 'N/A';
+      const currentMappings = col.mappedColumns || [];
+      const description = col.description || 'No description available';
+      
+      // Get similar columns from BigQuery
+      const similarColumns = await this.bigQueryClient.findSimilarColumns(userTerm);
+      
+      // Format the suggestions
+      let suggestionsText = '';
+      if (similarColumns.length > 0) {
+        suggestionsText = `\n   Suggestions: ${similarColumns.join(', ')}`;
+      } else if (availableColumns.length > 0) {
+        // If no similar columns found, show some available columns
+        suggestionsText = `\n   Available columns: ${availableColumns.slice(0, 5).join(', ')}${availableColumns.length > 5 ? '...' : ''}`;
+      }
+      
+      // Add to the text
+      text += `${columnMappings.length + 1}. Term: "${userTerm}"\n`;
+      text += `   Maps to: ${currentMappings.join(', ') || 'None'}`;
+      text += suggestionsText;
+      text += `\n   Description: ${description}\n\n`;
+      
+      columnMappings.push({
+        userTerm,
+        currentMappings,
+        similarColumns,
+        description
+      });
+    }
     
-    text += 'Please confirm if these mappings are correct, or suggest alternatives.';
+    text += 'Please confirm if these mappings are correct, or reply with the number and the correct column name (e.g., "1 amount" to map the first term to "amount").';
     
     return {
       content: [{
         type: 'text',
         text
-      }]
+      }],
+      // Include structured data for easier parsing in the response
+      metadata: {
+        type: 'column_mapping_confirmation',
+        columns: columnMappings
+      }
     };
   }
-  
+
+  private applyConfirmedMappings(parseResult: QueryParseResult, confirmedMappings: any): QueryParseResult {
+    // Create a deep copy of the parse result
+    const result = JSON.parse(JSON.stringify(parseResult));
+    
+    // Apply the confirmed mappings
+    result.columns = result.columns.map((col: any) => {
+      if (!col.confirmed && col.userTerm && confirmedMappings[col.userTerm]) {
+        return {
+          ...col,
+          mappedColumns: [confirmedMappings[col.userTerm]],
+          confirmed: true
+        };
+      }
+      return col;
+    });
+    
+    return result;
+  }
+
   private formatQueryResults(queryResult: any, parseResult: QueryParseResult, originalQuery: string): any {
     if (!queryResult.success) {
       return {

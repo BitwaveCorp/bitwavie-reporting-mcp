@@ -26,7 +26,77 @@ export class BigQueryClient {
   private dataset: Dataset | null = null;
   private table: Table | null = null;
   private queryCache: Map<string, { data: any; timestamp: number }> = new Map();
+  
+  // ========================================================================
+  // COLUMN METADATA
+  // ========================================================================
+  
+  /**
+   * Fetches and caches the available columns from the BigQuery table
+   */
+  public async getAvailableColumns(): Promise<string[]> {
+    if (this.columnsFetched && this.availableColumns.length > 0) {
+      return this.availableColumns;
+    }
+    
+    if (!this.table) {
+      throw new Error('BigQuery table not initialized. Call configure() first.');
+    }
+    
+    try {
+      const [metadata] = await this.table.getMetadata();
+      this.availableColumns = metadata.schema.fields.map((field: any) => field.name);
+      this.columnsFetched = true;
+      return this.availableColumns;
+    } catch (error) {
+      console.error('Error fetching table columns:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Finds similar columns in the table based on the input string
+   * @param input The input string to find similar columns for
+   * @param limit Maximum number of suggestions to return
+   */
+  public async findSimilarColumns(input: string, limit: number = 3): Promise<string[]> {
+    const columns = await this.getAvailableColumns();
+    if (columns.length === 0) return [];
+    
+    // Simple similarity scoring based on string inclusion and position
+    const scoredColumns = columns.map(column => {
+      const lowerColumn = column.toLowerCase();
+      const lowerInput = input.toLowerCase();
+      
+      // Score based on:
+      // 1. Exact match (highest score)
+      if (lowerColumn === lowerInput) return { column, score: 100 };
+      
+      // 2. Starts with input
+      if (lowerColumn.startsWith(lowerInput)) return { column, score: 80 };
+      
+      // 3. Contains input
+      if (lowerColumn.includes(lowerInput)) return { column, score: 60 };
+      
+      // 4. Words in common
+      const columnWords = new Set(lowerColumn.split(/[^a-z0-9]+/).filter(Boolean));
+      const inputWords = new Set(lowerInput.split(/[^a-z0-9]+/).filter(Boolean));
+      const commonWords = [...inputWords].filter(word => columnWords.has(word)).length;
+      
+      return { column, score: commonWords * 10 };
+    });
+    
+    // Sort by score and return top N
+    return scoredColumns
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .filter(item => item.score > 0)
+      .map(item => item.column);
+  }
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  private availableColumns: string[] = [];
+  private columnsFetched: boolean = false;
 
   constructor() {
     // Initialize empty - configuration happens via configure()
@@ -38,6 +108,7 @@ export class BigQueryClient {
   
   async configure(config: BigQueryConfig): Promise<void> {
     this.config = config;
+    this.columnsFetched = false; // Reset columns cache on reconfigure
     
     try {
       // Initialize BigQuery client
@@ -105,7 +176,10 @@ export class BigQueryClient {
             rows_processed: cached.length,
             execution_time_ms: Date.now() - startTime,
             cached: true,
-            columns_used: parseResult.columns.map(col => col.mappedColumns).flat()
+            columns_used: parseResult.columns
+              .map(col => col.mappedColumns || [])
+              .flat()
+              .filter(Boolean) as string[]
           }
         };
       }
@@ -127,7 +201,10 @@ export class BigQueryClient {
           rows_processed: results.length,
           execution_time_ms: Date.now() - startTime,
           cached: false,
-          columns_used: parseResult.columns.map(col => col.mappedColumns).flat()
+          columns_used: parseResult.columns
+            .map(col => col.mappedColumns || [])
+            .flat()
+            .filter(Boolean) as string[]
         }
       };
 
@@ -195,7 +272,7 @@ export class BigQueryClient {
     const selectParts: string[] = [];
     
     columns.forEach(columnMapping => {
-      columnMapping.mappedColumns.forEach((column: string) => {
+      (columnMapping.mappedColumns || []).forEach((column: string) => {
         const metadata = this.getColumnMetadata(column);
         
         if (metadata?.aggregatable && aggregationType !== 'count') {
@@ -301,13 +378,13 @@ export class BigQueryClient {
     
     // Only add GROUP BY for aggregation queries
     if (aggregationType === 'count' || 
-        columns.some(col => col.mappedColumns.some((mcol: string) => this.getColumnMetadata(mcol)?.aggregatable))) {
+        columns.some(col => (col.mappedColumns || []).some((mcol: string) => this.getColumnMetadata(mcol)?.aggregatable))) {
       
       const groupColumns: string[] = ['asset']; // Always group by asset for financial queries
       
       // Add additional non-aggregatable columns to GROUP BY
       columns.forEach(columnMapping => {
-        columnMapping.mappedColumns.forEach((column: string) => {
+        (columnMapping.mappedColumns || []).forEach((column: string) => {
           const metadata = this.getColumnMetadata(column);
           if (!metadata?.aggregatable && !groupColumns.includes(column)) {
             groupColumns.push(column);
