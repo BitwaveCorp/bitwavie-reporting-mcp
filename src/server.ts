@@ -258,7 +258,8 @@ export class ReportingMCPServer {
         } catch (error) {
           console.error('Error using Claude for column mapping:', error);
           logFlow('CLAUDE_MAPPING', 'ERROR', 'Claude column mapping failed', { error: String(error) });
-          // Continue with regular column mapping if Claude fails
+          // Instead of falling back to regular mapping, we'll show all columns and ask for explicit mapping
+          return await this.formatFullColumnList(parseResult, query);
         }
       }
       
@@ -395,7 +396,7 @@ Please map these columns to the appropriate BigQuery columns based on the query 
 
     // Call Claude API
     const response = await this.anthropic.messages.create({
-      model: 'claude-3-sonnet-20240229',
+      model: 'claude-3-5-sonnet-20240620',  // Updated to latest model
       max_tokens: 1000,
       system: systemPrompt,
       messages: [{ role: 'user', content: message }],
@@ -439,6 +440,93 @@ Please map these columns to the appropriate BigQuery columns based on the query 
       console.error('Error parsing Claude response:', error, content);
       throw new Error('Failed to parse Claude response');
     }
+  }
+
+  /**
+   * Shows a full list of available columns when Claude mapping fails
+   * @param parseResult The initial parse result
+   * @param originalQuery The original user query
+   * @returns Formatted response with all available columns and example
+   */
+  private async formatFullColumnList(parseResult: QueryParseResult, originalQuery: string): Promise<any> {
+    // Get all available columns from BigQuery
+    let availableColumns: string[] = [];
+    let columnMetadata: Record<string, any> = {};
+    
+    try {
+      availableColumns = await this.bigQueryClient.getAvailableColumns();
+      
+      // Get metadata for each column
+      for (const column of availableColumns) {
+        try {
+          const metadata = await this.bigQueryClient.getColumnMetadata(column);
+          if (metadata) {
+            columnMetadata[column] = metadata;
+          }
+        } catch (error) {
+          console.warn(`Could not get metadata for column ${column}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching available columns:', error);
+      // Continue with empty array if we can't fetch columns
+    }
+    
+    // Group columns by category for better organization
+    const groupedColumns: Record<string, string[]> = {
+      'Time-related': [],
+      'Asset-related': [],
+      'Transaction-related': [],
+      'Financial': [],
+      'Other': []
+    };
+    
+    // Categorize columns
+    for (const column of availableColumns) {
+      const description = columnMetadata[column]?.description || '';
+      const type = columnMetadata[column]?.type || 'UNKNOWN';
+      
+      if (['timestamp', 'date', 'time'].some(term => column.toLowerCase().includes(term))) {
+        groupedColumns['Time-related']?.push(column);
+      } else if (['asset', 'coin', 'token', 'currency'].some(term => column.toLowerCase().includes(term))) {
+        groupedColumns['Asset-related']?.push(column);
+      } else if (['action', 'transaction', 'transfer'].some(term => column.toLowerCase().includes(term))) {
+        groupedColumns['Transaction-related']?.push(column);
+      } else if (['amount', 'value', 'price', 'fee', 'gain', 'loss', 'cost', 'basis'].some(term => column.toLowerCase().includes(term))) {
+        groupedColumns['Financial']?.push(column);
+      } else {
+        groupedColumns['Other']?.push(column);
+      }
+    }
+    
+    // Create the response text
+    let text = `📋 **Please Specify the Columns You Need**\n\nFor your query: "${originalQuery}"\n\n`;
+    text += `I need you to specify which columns you want to use in your query. Here are all available columns grouped by category:\n\n`;
+    
+    // Add grouped columns to the text
+    for (const [category, columns] of Object.entries(groupedColumns)) {
+      if (columns.length > 0) {
+        text += `**${category} Columns:**\n`;
+        for (const column of columns) {
+          const description = columnMetadata[column]?.description || 'No description available';
+          const type = columnMetadata[column]?.type || 'UNKNOWN';
+          text += `- \`${column}\`: ${description} (${type})\n`;
+        }
+        text += '\n';
+      }
+    }
+    
+    // Add example prompt
+    text += `**Example Query Format:**\n`;
+    text += `"Sum shortTermGainLoss column for all rows where asset column is ETH"\n\n`;
+    text += `Please rephrase your query to clearly specify which columns you want to use.`;
+    
+    return {
+      content: [{
+        type: 'text',
+        text
+      }]
+    };
   }
 
   private async formatColumnMappingConfirmation(parseResult: QueryParseResult, originalQuery: string): Promise<any> {
