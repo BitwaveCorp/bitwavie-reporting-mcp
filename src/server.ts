@@ -3,6 +3,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { Anthropic } from '@anthropic-ai/sdk';
 import { QueryParser } from './services/query-parser.js';
 import { BigQueryClient } from './services/bigquery-client.js';
 import { BigQueryConfig, ColumnMapping, QueryParseResult, ReportParameters } from './types/actions-report.js';
@@ -32,6 +33,7 @@ export class ReportingMCPServer {
   private server: Server;
   private queryParser: QueryParser;
   private bigQueryClient: BigQueryClient;
+  private anthropic: Anthropic | null = null;
 
   constructor() {
     this.server = new Server(
@@ -49,6 +51,16 @@ export class ReportingMCPServer {
     // Initialize services
     this.queryParser = new QueryParser();
     this.bigQueryClient = new BigQueryClient();
+    
+    // Initialize Anthropic client if API key is available
+    if (process.env.ANTHROPIC_API_KEY) {
+      this.anthropic = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      });
+      console.log('✅ Anthropic client initialized');
+    } else {
+      console.warn('⚠️ ANTHROPIC_API_KEY not found in environment variables. Intelligent column mapping will be disabled.');
+    }
     
     this.setupHandlers();
     this.initializeBigQueryClient();
@@ -234,6 +246,20 @@ export class ReportingMCPServer {
       // Apply any confirmed mappings if provided
       if (confirmedMappings) {
         parseResult = this.applyConfirmedMappings(parseResult, confirmedMappings);
+      } else if (this.anthropic) {
+        // Use Claude for intelligent column mapping if no confirmed mappings provided
+        try {
+          logFlow('CLAUDE_MAPPING', 'ENTRY', 'Using Claude for intelligent column mapping', { query });
+          parseResult = await this.useIntelligentColumnMapping(parseResult, query);
+          logFlow('CLAUDE_MAPPING', 'EXIT', 'Claude column mapping completed', { 
+            columnCount: parseResult.columns.length,
+            confirmedCount: parseResult.columns.filter(col => col.confirmed).length
+          });
+        } catch (error) {
+          console.error('Error using Claude for column mapping:', error);
+          logFlow('CLAUDE_MAPPING', 'ERROR', 'Claude column mapping failed', { error: String(error) });
+          // Continue with regular column mapping if Claude fails
+        }
       }
       
       // Check if we still need column mapping confirmation
@@ -306,8 +332,122 @@ export class ReportingMCPServer {
     }
   }
   
+  /**
+   * Uses Claude to intelligently map columns based on natural language understanding
+   * @param parseResult The initial parse result with unconfirmed columns
+   * @param query The original user query
+   * @returns Updated parse result with Claude-confirmed column mappings
+   */
+  private async useIntelligentColumnMapping(parseResult: QueryParseResult, query: string): Promise<QueryParseResult> {
+    if (!this.anthropic) {
+      throw new Error('Anthropic client not initialized');
+    }
+
+    // Get available columns and their metadata from BigQuery
+    const availableColumns = await this.bigQueryClient.getAvailableColumns();
+    if (!availableColumns || availableColumns.length === 0) {
+      throw new Error('No columns available from BigQuery');
+    }
+
+    // Get column metadata for context
+    const columnMetadata: Record<string, any> = {};
+    for (const column of availableColumns) {
+      try {
+        const metadata = await this.bigQueryClient.getColumnMetadata(column);
+        if (metadata) {
+          columnMetadata[column] = metadata;
+        }
+      } catch (error) {
+        console.warn(`Could not get metadata for column ${column}:`, error);
+      }
+    }
+
+    // Create a system prompt for Claude
+    const systemPrompt = `You are an expert data analyst helping map natural language queries to database columns.
+
+Available columns in the BigQuery table:
+${availableColumns.map(col => `- ${col}: ${columnMetadata[col]?.description || 'No description available'}`).join('\n')}
+
+Your task is to determine which columns are relevant to the user's query and map them appropriately.
+For each column in the query parse result, determine if it should be confirmed and mapped to a specific BigQuery column.
+Only confirm columns that are actually needed to answer the query. Don't include columns that aren't relevant.
+
+Respond in JSON format with the following structure:
+{
+  "columns": [
+    {
+      "userTerm": "[original term]",
+      "mappedColumn": "[bigquery column name]",
+      "confirmed": true/false,
+      "reasoning": "[brief explanation]"
+    },
+    ...
+  ]
+}`;
+
+    // Create a message for Claude with the query and parse result
+    const message = `User query: "${query}"
+
+Current parse result columns:
+${JSON.stringify(parseResult.columns, null, 2)}
+
+Please map these columns to the appropriate BigQuery columns based on the query intent.`;
+
+    // Call Claude API
+    const response = await this.anthropic.messages.create({
+      model: 'claude-3-sonnet-20240229',
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: message }],
+    });
+
+    // Extract and parse the JSON response
+    const content = response.content[0]?.type === 'text' ? response.content[0].text : '';
+    const jsonMatch = content.match(/\{[\s\S]*\}/); // Extract JSON object from response
+    
+    if (!jsonMatch) {
+      throw new Error('Could not parse Claude response as JSON');
+    }
+    
+    try {
+      const mappingResult = JSON.parse(jsonMatch[0]);
+      
+      // Create a deep copy of the parse result
+      const updatedParseResult = JSON.parse(JSON.stringify(parseResult));
+      
+      // Update columns based on Claude's mappings
+      if (mappingResult.columns && Array.isArray(mappingResult.columns)) {
+        // Replace the columns with Claude's suggestions
+        updatedParseResult.columns = mappingResult.columns.map((mapping: {
+          userTerm: string;
+          mappedColumn?: string;
+          confirmed: boolean;
+          reasoning?: string;
+        }) => {
+          return {
+            userTerm: mapping.userTerm,
+            mappedColumns: mapping.mappedColumn ? [mapping.mappedColumn] : [],
+            confirmed: mapping.confirmed,
+            description: mapping.reasoning || 'Mapped by Claude',
+            type: columnMetadata[mapping.mappedColumn || '']?.type || 'string'
+          };
+        });
+      }
+      
+      return updatedParseResult;
+    } catch (error) {
+      console.error('Error parsing Claude response:', error, content);
+      throw new Error('Failed to parse Claude response');
+    }
+  }
+
   private async formatColumnMappingConfirmation(parseResult: QueryParseResult, originalQuery: string): Promise<any> {
     const unconfirmedColumns = parseResult.columns.filter(col => !col.confirmed);
+    
+    // If there are no unconfirmed columns, no need for confirmation
+    if (unconfirmedColumns.length === 0) {
+      return null;
+    }
     
     // Get available columns from BigQuery
     let availableColumns: string[] = [];

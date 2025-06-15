@@ -47,6 +47,146 @@ export class BigQueryClient {
   private dataset: Dataset | null = null;
   private table: Table | null = null;
   private queryCache: Map<string, { data: any; timestamp: number }> = new Map();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  
+  // Column metadata caching
+  private availableColumns: string[] = [];
+  private columnsFetched: boolean = false;
+  private tableSchema: any = null;
+  private schemaFetched: boolean = false;
+  
+  // Predefined column descriptions for enhanced semantic understanding
+  private predefinedColumnMetadata: Record<string, any> = {
+    // Time-related columns
+    'timestamp': { 
+      description: 'Date and time when the transaction occurred', 
+      type: 'TIMESTAMP',
+      aggregatable: false
+    },
+    
+    // Asset identification columns
+    'asset': { 
+      description: 'Cryptocurrency symbol/ticker (e.g., BTC, ETH, SOL)', 
+      type: 'STRING',
+      aggregatable: false
+    },
+    'assetName': { 
+      description: 'Full name of the cryptocurrency (e.g., Bitcoin, Ethereum, Solana)', 
+      type: 'STRING',
+      aggregatable: false
+    },
+    
+    // Transaction type columns
+    'action': { 
+      description: 'Type of transaction (buy, sell, transfer, stake, etc.)', 
+      type: 'STRING',
+      aggregatable: false
+    },
+    'transactionType': { 
+      description: 'Category of transaction (trade, transfer, income, etc.)', 
+      type: 'STRING',
+      aggregatable: false
+    },
+    
+    // Quantity columns
+    'amount': { 
+      description: 'Quantity of cryptocurrency in the transaction', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'balance': { 
+      description: 'Current balance of the cryptocurrency', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    
+    // Financial columns
+    'price': { 
+      description: 'Price per unit of the cryptocurrency at transaction time', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'value': { 
+      description: 'Total value of the transaction in fiat currency', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'fee': { 
+      description: 'Transaction fee paid', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    
+    // Gain/Loss columns
+    'shortTermGainLoss': { 
+      description: 'Realized gain or loss for assets held less than a year', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'longTermGainLoss': { 
+      description: 'Realized gain or loss for assets held more than a year', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'undatedGainLoss': { 
+      description: 'Gain or loss where the holding period is unknown', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'totalGainLoss': { 
+      description: 'Total realized gain or loss across all holding periods', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'unrealizedGainLoss': { 
+      description: 'Potential gain or loss for assets still held', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    
+    // Cost basis columns
+    'costBasisAcquired': { 
+      description: 'Cost basis of assets acquired in the transaction', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'costBasisRelieved': { 
+      description: 'Cost basis of assets disposed in the transaction', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'carryingValue': { 
+      description: 'Current carrying value of the assets', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'fairMarketValueDisposed': { 
+      description: 'Fair market value of assets at time of disposal', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    
+    // Other columns
+    'assetUnitAdj': { 
+      description: 'Adjustment to asset units', 
+      type: 'NUMERIC',
+      aggregatable: true
+    },
+    'wallet': { 
+      description: 'Wallet address or identifier', 
+      type: 'STRING',
+      aggregatable: false
+    },
+    'exchange': { 
+      description: 'Exchange or platform where the transaction occurred', 
+      type: 'STRING',
+      aggregatable: false
+    }
+  }
+  
+  constructor() {
+    // Initialize empty - configuration happens via configure()
+  }
   
   // ========================================================================
   // COLUMN METADATA
@@ -55,21 +195,51 @@ export class BigQueryClient {
   /**
    * Fetches and caches the available columns from the BigQuery table
    */
+  /**
+   * Fetches and caches the available columns from the BigQuery table schema
+   * @returns Array of column names available in the table
+   */
   public async getAvailableColumns(): Promise<string[]> {
+    // Return cached columns if available
     if (this.columnsFetched && this.availableColumns.length > 0) {
       return this.availableColumns;
     }
     
+    // If we already have the schema, use it instead of making another API call
+    if (this.schemaFetched && this.tableSchema?.fields) {
+      logFlow('GET_COLUMNS', 'INFO', 'Using cached schema to get columns');
+      this.availableColumns = this.tableSchema.fields.map((field: any) => field.name);
+      this.columnsFetched = true;
+      return this.availableColumns;
+    }
+    
+    // Otherwise fetch the schema if needed
+    if (!this.schemaFetched) {
+      await this.fetchTableSchema();
+      
+      // If schema fetching was successful, use it
+      if (this.schemaFetched && this.tableSchema?.fields) {
+        this.availableColumns = this.tableSchema.fields.map((field: any) => field.name);
+        this.columnsFetched = true;
+        return this.availableColumns;
+      }
+    }
+    
+    // Fallback to direct metadata fetch if schema is still not available
     if (!this.table) {
       throw new Error('BigQuery table not initialized. Call configure() first.');
     }
     
     try {
+      logFlow('GET_COLUMNS', 'ENTRY', 'Fetching columns directly from table metadata');
       const [metadata] = await this.table.getMetadata();
       this.availableColumns = metadata.schema.fields.map((field: any) => field.name);
       this.columnsFetched = true;
+      logFlow('GET_COLUMNS', 'EXIT', `Retrieved ${this.availableColumns.length} columns`);
       return this.availableColumns;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logFlow('GET_COLUMNS', 'ERROR', 'Error fetching table columns', { error: errorMessage });
       console.error('Error fetching table columns:', error);
       return [];
     }
@@ -114,13 +284,32 @@ export class BigQueryClient {
       .filter(item => item.score > 0)
       .map(item => item.column);
   }
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-  private availableColumns: string[] = [];
-  private columnsFetched: boolean = false;
-
-  constructor() {
-    // Initialize empty - configuration happens via configure()
+  /**
+   * Fetches and caches the table schema from BigQuery
+   * This provides actual column metadata from the database
+   */
+  private async fetchTableSchema(): Promise<void> {
+    if (this.schemaFetched && this.tableSchema) {
+      return;
+    }
+    
+    if (!this.table) {
+      throw new Error('BigQuery table not initialized. Call configure() first.');
+    }
+    
+    try {
+      logFlow('FETCH_SCHEMA', 'ENTRY', 'Fetching table schema from BigQuery');
+      const [metadata] = await this.table.getMetadata();
+      this.tableSchema = metadata.schema;
+      this.schemaFetched = true;
+      logFlow('FETCH_SCHEMA', 'EXIT', 'Table schema fetched successfully', { 
+        fieldCount: this.tableSchema?.fields?.length || 0 
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logFlow('FETCH_SCHEMA', 'ERROR', 'Error fetching table schema', { error: errorMessage });
+      console.error('Error fetching table schema:', error);
+    }
   }
 
   // ========================================================================
@@ -157,6 +346,9 @@ export class BigQueryClient {
 
       // Test connection
       await this.testConnection();
+      
+      // Fetch and cache the table schema for dynamic column metadata
+      await this.fetchTableSchema();
       
       logFlow('CONFIGURE', 'EXIT', `BigQuery connected: ${config.projectId}.${config.datasetId}.${config.tableId}`);
       console.log(`✅ BigQuery connected: ${config.projectId}.${config.datasetId}.${config.tableId}`);
@@ -714,18 +906,81 @@ export class BigQueryClient {
   // UTILITY METHODS
   // ========================================================================
 
+  /**
+   * Gets metadata for a specific column, combining dynamic schema information with predefined metadata
+   * @param column The column name to get metadata for
+   * @returns Column metadata including type, description, and aggregation capabilities
+   */
   private getColumnMetadata(column: string): any {
-    // This would reference the ACTIONS_REPORT_METADATA
-    // For now, returning basic metadata
+    // First check if we have predefined metadata for this column
+    const predefinedMetadata = this.predefinedColumnMetadata[column];
+    
+    // If we have schema information, try to get column metadata from there
+    let schemaMetadata: any = null;
+    if (this.tableSchema?.fields) {
+      const field = this.tableSchema.fields.find((f: any) => f.name.toLowerCase() === column.toLowerCase());
+      if (field) {
+        schemaMetadata = {
+          type: field.type,
+          description: field.description || null,
+          mode: field.mode
+        };
+      }
+    }
+    
+    // Combine metadata, with predefined taking precedence for description and aggregation info
+    // but schema providing the actual type if available
+    const result: any = {
+      type: (schemaMetadata?.type || predefinedMetadata?.type || 'STRING').toUpperCase(),
+      description: predefinedMetadata?.description || schemaMetadata?.description || `${column} column`,
+      aggregatable: predefinedMetadata?.aggregatable ?? this.isLikelyAggregatable(column, schemaMetadata?.type)
+    };
+    
+    // Add mode information if available from schema
+    if (schemaMetadata?.mode) {
+      result.mode = schemaMetadata.mode;
+    }
+    
+    logFlow('GET_COLUMN_METADATA', 'INFO', `Metadata for column: ${column}`, { 
+      fromSchema: !!schemaMetadata, 
+      fromPredefined: !!predefinedMetadata,
+      result
+    });
+    
+    return result;
+  }
+  
+  /**
+   * Helper method to determine if a column is likely aggregatable based on its name and type
+   * @param column Column name
+   * @param type Column data type if known
+   * @returns Boolean indicating if column is likely aggregatable
+   */
+  private isLikelyAggregatable(column: string, type?: string): boolean {
+    // Financial and numeric columns are typically aggregatable
     const financialColumns = [
-      'shortTermGainLoss', 'longTermGainLoss', 'undatedGainLoss',
-      'costBasisAcquired', 'costBasisRelieved', 'carryingValue',
-      'fairMarketValueDisposed', 'assetUnitAdj'
+      'shortTermGainLoss', 'longTermGainLoss', 'undatedGainLoss', 'totalGainLoss', 'unrealizedGainLoss',
+      'costBasisAcquired', 'costBasisRelieved', 'carryingValue', 'fairMarketValueDisposed', 
+      'assetUnitAdj', 'amount', 'balance', 'price', 'value', 'fee'
     ];
     
-    return {
-      aggregatable: financialColumns.includes(column)
-    };
+    // Check if column name is in our known financial columns list
+    if (financialColumns.includes(column)) {
+      return true;
+    }
+    
+    // Check if column type is numeric
+    if (type && ['INTEGER', 'FLOAT', 'NUMERIC', 'BIGNUMERIC'].includes(type.toUpperCase())) {
+      return true;
+    }
+    
+    // Check if column name contains keywords suggesting it's numeric
+    const numericKeywords = ['amount', 'count', 'total', 'sum', 'avg', 'balance', 'price', 'value', 'fee', 'gain', 'loss'];
+    if (numericKeywords.some(keyword => column.toLowerCase().includes(keyword))) {
+      return true;
+    }
+    
+    return false;
   }
 
   private getErrorSuggestions(error: any): string[] {
