@@ -555,33 +555,40 @@ Please map these columns to the appropriate BigQuery columns based on the query 
     });
     
     // Create the response text
-    let text = `📋 **Gain/Loss Analysis**\n\nFor your query: "${originalQuery}"\n\n`;
-    text += `Here are the gain/loss related columns you might want to use:\n\n`;
+    let text = `📋 **Gain/Loss Analysis**\n\n`;
+    text += `For your query: "${originalQuery}"\n\n`;
+    text += `Here are the gain/loss related columns you might want to use:\n`;
     
     // Add gain/loss columns with descriptions and numbers for selection
     if (gainLossColumns.length > 0) {
-      text += `**Gain/Loss Columns:**\n`;
+      text += `\n\n## **Gain/Loss Columns**\n`;
       gainLossColumns.forEach((column, index) => {
         const description = columnMetadata[column]?.description || 'No description available';
         const type = columnMetadata[column]?.type || 'UNKNOWN';
-        text += `${index + 1}. \`${column}\`: ${description} (${type})\n`;
+        
+        // Format each column entry with proper spacing
+        text += `${(index + 1).toString().padStart(2, ' ')}. \`${column}\`\n`;
+        text += `    ${description} (${type})\n\n`;
       });
-      text += '\n';
     } else {
-      text += `No specific gain/loss columns found. Here are some financial columns you might want to use:\n\n`;
+      text += `\n\nNo specific gain/loss columns found. Here are some financial columns you might want to use:\n\n`;
     }
     
-    // Add example complete queries
-    text += `**Example Complete Queries:**\n`;
-    text += `- "Sum shortTermGainLoss for all transactions"\n`;
-    text += `- "What is my total longTermGainLoss for ETH"\n`;
-    text += `- "Show me total gainLoss grouped by asset"\n\n`;
+    // Add example complete queries with better formatting
+    text += `\n\n## **Example Complete Queries**\n\n`;
+    text += `• "Sum shortTermGainLoss for all transactions"\n`;
+    text += `• "What is my total longTermGainLoss for ETH"\n`;
+    text += `• "Show me total gainLoss grouped by asset"\n`;
     
-    // Add clear instructions for selection
-    text += `**To proceed, please do one of the following:**\n`;
-    text += `1. Enter the number of the column you want to use (e.g., "1" for the first column)\n`;
-    text += `2. Type a complete query specifying the column (e.g., "Sum shortTermGainLoss grouped by asset")\n`;
-    text += `3. Type "use [column name]" (e.g., "use shortTermGainLoss")\n\n`;
+    // Add clear instructions for selection with better formatting
+    text += `\n\n## **How to Proceed**\n\n`;
+    text += `Please do one of the following:\n\n`;
+    text += `1️⃣ Enter the number of the column you want to use\n`;
+    text += `   Example: "2" for longTermGainLoss\n\n`;
+    text += `2️⃣ Type a complete query specifying the column\n`;
+    text += `   Example: "Sum shortTermGainLoss grouped by asset"\n\n`;
+    text += `3️⃣ Type "use [column name]"\n`;
+    text += `   Example: "use shortTermGainLoss"\n\n`;
     text += `Your selection will be used to execute the query.`;
     
     // Create a data object with column mappings for the client to use
@@ -661,8 +668,10 @@ Please map these columns to the appropriate BigQuery columns based on the query 
     }
     
     // Create the response text
-    let text = `📋 **Please Specify the Columns You Need**\n\nFor your query: "${originalQuery}"\n\n`;
-    text += `I need you to specify which columns you want to use in your query. Here are all available columns grouped by category:\n\n`;
+    let text = `📋 **Please Specify the Columns You Need**\n\n`;
+    text += `For your query: "${originalQuery}"\n\n`;
+    text += `I need you to specify which columns you want to use in your query.\n\n`;
+    text += `**Available Columns by Category:**\n`;
     
     // Create a flat list of all columns for indexing
     const allColumnsList: string[] = [];
@@ -671,29 +680,38 @@ Please map these columns to the appropriate BigQuery columns based on the query 
     let columnIndex = 1;
     for (const [category, columns] of Object.entries(groupedColumns)) {
       if (columns.length > 0) {
-        text += `**${category} Columns:**\n`;
+        text += `\n\n## **${category} Columns**\n`;
+        
+        // Create a table-like structure with numbers and columns
         for (const column of columns) {
           const description = columnMetadata[column]?.description || 'No description available';
           const type = columnMetadata[column]?.type || 'UNKNOWN';
-          text += `${columnIndex}. \`${column}\`: ${description} (${type})\n`;
+          
+          // Format each column entry with proper spacing
+          text += `${columnIndex.toString().padStart(2, ' ')}. \`${column}\`\n`;
+          text += `    ${description} (${type})\n\n`;
+          
           allColumnsList.push(column);
           columnIndex++;
         }
-        text += '\n';
       }
     }
     
-    // Add example queries
-    text += `**Example Complete Queries:**\n`;
-    text += `- "Sum amount for all rows where asset is ETH"\n`;
-    text += `- "Count transactions grouped by asset"\n`;
-    text += `- "Average price where timestamp is after 2023-01-01"\n\n`;
+    // Add example queries with better formatting
+    text += `\n\n## **Example Complete Queries**\n\n`;
+    text += `• "Sum amount for all rows where asset is ETH"\n`;
+    text += `• "Count transactions grouped by asset"\n`;
+    text += `• "Average price where timestamp is after 2023-01-01"\n`;
     
-    // Add clear instructions for selection
-    text += `**To proceed, please do one of the following:**\n`;
-    text += `1. Enter the number of the column you want to use (e.g., "1" for the first column)\n`;
-    text += `2. Type a complete query specifying the column (e.g., "Sum amount grouped by asset")\n`;
-    text += `3. Type "use [column name]" (e.g., "use amount")\n\n`;
+    // Add clear instructions for selection with better formatting
+    text += `\n\n## **How to Proceed**\n\n`;
+    text += `Please do one of the following:\n\n`;
+    text += `1️⃣ Enter the number of the column you want to use\n`;
+    text += `   Example: "22" for shortTermGainLoss\n\n`;
+    text += `2️⃣ Type a complete query specifying the column\n`;
+    text += `   Example: "Sum shortTermGainLoss grouped by asset"\n\n`;
+    text += `3️⃣ Type "use [column name]"\n`;
+    text += `   Example: "use shortTermGainLoss"\n\n`;
     text += `Your selection will be used to execute the query.`;
     
     // Create a data object with column mappings for the client to use
