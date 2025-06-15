@@ -256,17 +256,36 @@ export class ReportingMCPServer {
         }
       }
       
-      // Parse the natural language query
-      let parseResult = await this.queryParser.parseQuery(query);
+      // When we have confirmed mappings, we can create a minimal parse result
+      // This avoids the query parser adding unwanted default columns
+      let parseResult: QueryParseResult = {
+        intent: 'aggregation', // Default intent for confirmed mappings
+        assets: [],
+        filters: [],
+        aggregations: [],
+        groupBy: [],
+        orderBy: [],
+        columns: [], // Start with empty columns, they'll be filled by applyConfirmedMappings
+        metadata: {
+          query,
+          timestamp: new Date().toISOString(),
+        },
+      };
       
-      // Apply confirmed mappings
+      // Apply confirmed mappings to our minimal parse result
       parseResult = this.applyConfirmedMappings(parseResult, confirmedMappings);
       
-      // At this point, all columns should be confirmed since we have confirmedMappings
+      // Log the confirmed mappings
+      logFlow('CONFIRMED_MAPPINGS', 'INFO', 'Applied confirmed mappings', { 
+        confirmedMappings,
+        resultColumns: parseResult.columns.map(c => c.name)
+      });
       
-      // Check if we still need column mapping confirmation
+      // At this point, all columns should be confirmed since we have confirmedMappings
+      // Double-check just to be safe
       const needsConfirmation = parseResult.columns.some(col => !col.confirmed);
       if (needsConfirmation) {
+        console.warn('Unexpected unconfirmed columns after applying confirmed mappings');
         return await this.formatColumnMappingConfirmation(parseResult, query);
       }
       
@@ -671,9 +690,15 @@ Please map these columns to the appropriate BigQuery columns based on the query 
     // Create a deep copy of the parse result
     const result = JSON.parse(JSON.stringify(parseResult));
     
-    // Apply the confirmed mappings
+    // Start with an empty columns array if we're applying confirmed mappings directly
+    if (Object.keys(confirmedMappings).length > 0 && result.columns.length === 0) {
+      result.columns = [];
+    }
+    
+    // First, apply mappings to existing columns
     result.columns = result.columns.map((col: any) => {
-      if (!col.confirmed && col.userTerm && confirmedMappings[col.userTerm]) {
+      // If the column has a userTerm that matches a confirmed mapping
+      if (col.userTerm && confirmedMappings[col.userTerm]) {
         return {
           ...col,
           mappedColumns: [confirmedMappings[col.userTerm]],
@@ -682,6 +707,33 @@ Please map these columns to the appropriate BigQuery columns based on the query 
       }
       return col;
     });
+    
+    // Then, add any confirmed mappings that weren't already in the columns array
+    for (const [userTerm, mappedColumn] of Object.entries(confirmedMappings)) {
+      // Check if this mapping is already applied
+      const alreadyApplied = result.columns.some((col: any) => 
+        (col.userTerm === userTerm && col.confirmed) || 
+        (col.mappedColumns && col.mappedColumns.includes(mappedColumn))
+      );
+      
+      // If not already applied, add it as a new column
+      if (!alreadyApplied) {
+        result.columns.push({
+          userTerm,
+          mappedColumns: [mappedColumn as string],
+          confirmed: true,
+          name: mappedColumn as string,
+          type: 'unknown', // We'll get the actual type from BigQuery
+          displayName: mappedColumn as string
+        });
+      }
+    }
+    
+    // Ensure all columns are marked as confirmed
+    result.columns = result.columns.map((col: any) => ({
+      ...col,
+      confirmed: true
+    }));
     
     return result;
   }
