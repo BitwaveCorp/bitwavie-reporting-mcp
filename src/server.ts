@@ -228,7 +228,13 @@ export class ReportingMCPServer {
   private async handleAnalyzeData(args: any): Promise<any> {
     const { query = '', confirmedMappings, previousResponse } = args;
     
-    logFlow('ANALYZE_DATA', 'ENTRY', 'Analyzing data with query', { query, hasMappings: !!confirmedMappings });
+    logFlow('ANALYZE_DATA', 'ENTRY', 'Analyzing data with query', { 
+      query, 
+      hasMappings: !!confirmedMappings, 
+      hasPreviousResponse: !!previousResponse,
+      previousResponseType: previousResponse?.data?.type,
+      argsKeys: Object.keys(args)
+    });
     
     try {
       if (!query || query.trim().length === 0) {
@@ -241,24 +247,54 @@ export class ReportingMCPServer {
       }
       
       // Handle responses to column selection prompts
-      if (previousResponse && previousResponse.data) {
+      // Make sure previousResponse is properly structured with data property
+      if (previousResponse && typeof previousResponse === 'object' && previousResponse.data) {
         const { type, columnMappings } = previousResponse.data;
         
+        logFlow('COLUMN_SELECTION', 'INFO', 'Checking previous response data', { 
+          responseType: type, 
+          hasColumnMappings: !!columnMappings,
+          columnMappingsKeys: columnMappings ? Object.keys(columnMappings).slice(0, 5) : [],
+          columnMappingsCount: columnMappings ? Object.keys(columnMappings).length : 0,
+          previousResponseStructure: JSON.stringify(previousResponse).substring(0, 200)
+        });
+        
         if ((type === 'gain_loss_columns' || type === 'full_columns') && columnMappings) {
-          logFlow('COLUMN_SELECTION', 'INFO', 'Processing user response to column selection', { query });
+          logFlow('COLUMN_SELECTION', 'INFO', 'Processing user response to column selection', { 
+            query,
+            responseType: type
+          });
           
           // Check if the user provided a column number, a column name, or "use [column]"
           const lowerQuery = query.toLowerCase().trim();
           let selectedColumn = null;
           
+          // Log all available column mappings for debugging
+          logFlow('COLUMN_SELECTION', 'INFO', 'Available column mappings', { 
+            mappingsCount: Object.keys(columnMappings).length,
+            sampleMappings: Object.entries(columnMappings).slice(0, 5).map(([key, value]) => `${key} -> ${value}`)
+          });
+          
           // Case 1: User entered a number
-          if (/^\d+$/.test(lowerQuery) && columnMappings[lowerQuery]) {
-            selectedColumn = columnMappings[lowerQuery];
-            logFlow('COLUMN_SELECTION', 'INFO', 'User selected column by number', { number: lowerQuery, column: selectedColumn });
+          if (/^\d+$/.test(lowerQuery)) {
+            logFlow('COLUMN_SELECTION', 'INFO', 'User entered a number', { 
+              number: lowerQuery, 
+              matchFound: !!columnMappings[lowerQuery]
+            });
+            
+            if (columnMappings[lowerQuery]) {
+              selectedColumn = columnMappings[lowerQuery];
+              logFlow('COLUMN_SELECTION', 'INFO', 'User selected column by number', { number: lowerQuery, column: selectedColumn });
+            }
           }
           // Case 2: User entered "use [column]"
           else if (lowerQuery.startsWith('use ')) {
             const columnName = lowerQuery.substring(4).trim().toLowerCase();
+            logFlow('COLUMN_SELECTION', 'INFO', 'User entered "use" command', { 
+              columnName, 
+              matchFound: !!columnMappings[columnName]
+            });
+            
             if (columnMappings[columnName]) {
               selectedColumn = columnMappings[columnName];
               logFlow('COLUMN_SELECTION', 'INFO', 'User selected column with "use" command', { column: selectedColumn });
@@ -268,6 +304,11 @@ export class ReportingMCPServer {
           else if (columnMappings[lowerQuery]) {
             selectedColumn = columnMappings[lowerQuery];
             logFlow('COLUMN_SELECTION', 'INFO', 'User selected column by name', { column: selectedColumn });
+          } else {
+            logFlow('COLUMN_SELECTION', 'ERROR', 'No matching column found for user input', { 
+              userInput: lowerQuery,
+              availableKeys: Object.keys(columnMappings).slice(0, 10)
+            });
           }
           
           // If we found a selected column, create a confirmed mapping
@@ -282,7 +323,8 @@ export class ReportingMCPServer {
             
             logFlow('COLUMN_SELECTION', 'INFO', 'Created confirmed mapping from user selection', { 
               selectedColumn,
-              newConfirmedMappings
+              newConfirmedMappings,
+              newQuery
             });
             
             // Process with the new confirmed mappings
@@ -290,7 +332,37 @@ export class ReportingMCPServer {
               query: newQuery,
               confirmedMappings: newConfirmedMappings
             });
+          } else {
+            logFlow('COLUMN_SELECTION', 'ERROR', 'Failed to select column from user input', { 
+              userInput: query,
+              lowerQuery
+            });
+            
+            // Fallback: If we can't match the user's input to a column, provide a clear error message
+            // instead of replaying the column list
+            return {
+              content: [{
+                type: 'text',
+                text: `I couldn't match your input "${query}" to any available column. Please try one of these methods:\n\n` +
+                      `1. Enter just the number of the column (e.g., "2")\n` +
+                      `2. Type "use" followed by the exact column name (e.g., "use shortTermGainLoss")\n` +
+                      `3. Type a complete query with the column name\n\n` +
+                      `Let's try again with the column selection.`
+              }],
+              data: previousResponse.data, // Keep the same column mappings data
+              needsConfirmation: true // Still need confirmation
+            };
           }
+        }
+      } else {
+        // Log if previousResponse exists but doesn't have expected structure
+        if (previousResponse) {
+          logFlow('COLUMN_SELECTION', 'ERROR', 'Previous response exists but has invalid structure', {
+            hasData: !!previousResponse.data,
+            responseType: typeof previousResponse,
+            responseKeys: Object.keys(previousResponse),
+            responsePreview: JSON.stringify(previousResponse).substring(0, 200)
+          });
         }
       }
       
@@ -603,6 +675,12 @@ Please map these columns to the appropriate BigQuery columns based on the query 
       columnMappingsData[column.toLowerCase()] = column; // Map lowercase column names to actual column names
     });
     
+    logFlow('GAIN_LOSS_COLUMNS', 'INFO', 'Created column mappings data for gain/loss columns', {
+      columnCount: gainLossColumns.length,
+      mappingsCount: Object.keys(columnMappingsData).length,
+      sampleMappings: Object.entries(columnMappingsData).slice(0, 5).map(([key, value]) => `${key} -> ${value}`)
+    });
+    
     return {
       content: [{
         type: 'text',
@@ -728,6 +806,12 @@ Please map these columns to the appropriate BigQuery columns based on the query 
     allColumnsList.forEach((column, index) => {
       columnMappingsData[`${index + 1}`] = column; // Map numbers to column names
       columnMappingsData[column.toLowerCase()] = column; // Map lowercase column names to actual column names
+    });
+    
+    logFlow('FULL_COLUMNS', 'INFO', 'Created column mappings data for all columns', {
+      columnCount: allColumnsList.length,
+      mappingsCount: Object.keys(columnMappingsData).length,
+      sampleMappings: Object.entries(columnMappingsData).slice(0, 5).map(([key, value]) => `${key} -> ${value}`)
     });
     
     return {
