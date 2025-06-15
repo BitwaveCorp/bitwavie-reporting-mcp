@@ -7,6 +7,27 @@ import { QueryParser } from './services/query-parser.js';
 import { BigQueryClient } from './services/bigquery-client.js';
 import { BigQueryConfig, ColumnMapping, QueryParseResult, ReportParameters } from './types/actions-report.js';
 
+// Enhanced logging function with timestamps and flow tracking
+const logFlow = (stage: string, direction: 'ENTRY' | 'EXIT' | 'ERROR' | 'INFO', message: string, data: any = null) => {
+  const timestamp = new Date().toISOString();
+  let logPrefix = '???';
+  
+  switch (direction) {
+    case 'ENTRY': logPrefix = '>>>'; break;
+    case 'EXIT': logPrefix = '<<<'; break;
+    case 'ERROR': logPrefix = '!!!'; break;
+    case 'INFO': logPrefix = '---'; break;
+  }
+  
+  const logMessage = `[${timestamp}] ${logPrefix} MCP_${stage}: ${message}`;
+  
+  if (data) {
+    console.error(logMessage, data);
+  } else {
+    console.error(logMessage);
+  }
+};
+
 export class ReportingMCPServer {
   private server: Server;
   private queryParser: QueryParser;
@@ -73,8 +94,9 @@ export class ReportingMCPServer {
     });
     
     // Use schemas for request handlers
-    this.server.setRequestHandler(listToolsSchema, async () => {
-      return {
+    this.server.setRequestHandler(listToolsSchema, async (request) => {
+      logFlow('TOOLS_LIST', 'ENTRY', 'Received tools/list request', request);
+      const response = {
         tools: [
           {
             name: 'test_connection',
@@ -100,10 +122,15 @@ export class ReportingMCPServer {
           },
         ],
       };
+      
+      logFlow('TOOLS_LIST', 'EXIT', 'Sending tools/list response', { toolCount: response.tools.length });
+      return response;
     });
 
     this.server.setRequestHandler(callToolSchema, async (request) => {
       const { name, arguments: args = {} } = request.params;
+      
+      logFlow('TOOLS_CALL', 'ENTRY', `Received tools/call request for ${name}`, { toolName: name, args });
       
       try {
         switch (name) {
@@ -128,6 +155,7 @@ export class ReportingMCPServer {
   }
 
   private async handleTestConnection(): Promise<any> {
+    logFlow('TEST_CONNECTION', 'ENTRY', 'Testing connection to BigQuery');
     try {
       const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
       const datasetId = process.env.BIGQUERY_DATASET_ID;
@@ -152,7 +180,7 @@ export class ReportingMCPServer {
       const table = dataset.table(tableId);
       const [metadata] = await table.getMetadata();
 
-      return {
+      const response = {
         content: [
           {
             type: 'text',
@@ -160,12 +188,25 @@ export class ReportingMCPServer {
           },
         ],
       };
+      
+      logFlow('TEST_CONNECTION', 'EXIT', 'BigQuery connection successful', { 
+        projectId, 
+        datasetId, 
+        tableId, 
+        fieldCount: metadata.schema?.fields?.length || 0 
+      });
+      
+      return response;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      logFlow('TEST_CONNECTION', 'ERROR', 'BigQuery connection failed', { error: errorMessage });
+      
       return {
         content: [
           {
             type: 'text',
-            text: `❌ **Connection Failed**\n\nError: ${error instanceof Error ? error.message : String(error)}`,
+            text: `❌ **Connection Failed**\n\nError: ${errorMessage}`,
           },
         ],
       };
@@ -174,6 +215,8 @@ export class ReportingMCPServer {
 
   private async handleAnalyzeData(args: any): Promise<any> {
     const { query = '', confirmedMappings } = args;
+    
+    logFlow('ANALYZE_DATA', 'ENTRY', 'Analyzing data with query', { query, hasMappings: !!confirmedMappings });
     
     try {
       if (!query || query.trim().length === 0) {
@@ -222,16 +265,42 @@ export class ReportingMCPServer {
       // Cast the final object to the expected type
       const typedParameters = parameters as ReportParameters;
       
+      logFlow('BIGQUERY_EXECUTE', 'ENTRY', 'Executing BigQuery analytical query', { 
+        intent: parseResult.intent,
+        aggregationType: parseResult.aggregationType,
+        columnCount: parseResult.columns.length,
+        filterCount: Object.keys(parseResult.filters || {}).length,
+        parameters: typedParameters
+      });
+      
       const queryResult = await this.bigQueryClient.executeAnalyticalQuery(parseResult, typedParameters);
       
+      logFlow('BIGQUERY_EXECUTE', 'EXIT', 'BigQuery query execution completed', {
+        success: queryResult.success,
+        rowCount: queryResult.metadata?.rows_processed || 0,
+        executionTime: queryResult.metadata?.execution_time_ms || 0,
+        cached: queryResult.metadata?.cached || false
+      });
+      
       // Format and return the results
-      return this.formatQueryResults(queryResult, parseResult, query);
+      const formattedResults = this.formatQueryResults(queryResult, parseResult, query);
+      
+      logFlow('ANALYZE_DATA', 'EXIT', 'Analysis completed successfully', {
+        contentLength: formattedResults.content?.[0]?.text?.length || 0,
+        hasMetadata: !!formattedResults.metadata
+      });
+      
+      return formattedResults;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('Error analyzing data:', error);
+      
+      logFlow('ANALYZE_DATA', 'ERROR', 'Error analyzing data', { error: errorMessage });
+      
       return {
         content: [{
           type: 'text',
-          text: `❌ **Error Processing Query**\n\n${error instanceof Error ? error.message : String(error)}\n\nPlease try rephrasing your query or check the server logs for more details.`
+          text: `❌ **Error Processing Query**\n\n${errorMessage}\n\nPlease try rephrasing your query or check the server logs for more details.`
         }]
       };
     }
@@ -395,6 +464,13 @@ export class ReportingMCPServer {
   }
 
   async run(): Promise<void> {
+    console.error('===========================================');
+    console.error('🚀 Starting Reporting MCP Server');
+    console.error(`Project: ${process.env.GOOGLE_CLOUD_PROJECT_ID || 'Not set'}`);
+    console.error(`Dataset: ${process.env.BIGQUERY_DATASET_ID || 'Not set'}`);
+    console.error(`Table: ${process.env.BIGQUERY_TABLE_ID || 'Not set'}`);
+    console.error('===========================================');
+    
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error('Reporting MCP Server running on stdio');

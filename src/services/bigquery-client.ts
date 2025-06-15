@@ -20,6 +20,27 @@ import {
   ReportParameters 
 } from '../types/actions-report.js';
 
+// Enhanced logging function with timestamps and flow tracking
+const logFlow = (stage: string, direction: 'ENTRY' | 'EXIT' | 'ERROR' | 'INFO', message: string, data: any = null) => {
+  const timestamp = new Date().toISOString();
+  let logPrefix = '???';
+  
+  switch (direction) {
+    case 'ENTRY': logPrefix = '>>>'; break;
+    case 'EXIT': logPrefix = '<<<'; break;
+    case 'ERROR': logPrefix = '!!!'; break;
+    case 'INFO': logPrefix = '---'; break;
+  }
+  
+  const logMessage = `[${timestamp}] ${logPrefix} BIGQUERY_${stage}: ${message}`;
+  
+  if (data) {
+    console.error(logMessage, data);
+  } else {
+    console.error(logMessage);
+  }
+};
+
 export class BigQueryClient {
   private bigquery: BigQuery | null = null;
   private config: BigQueryConfig | null = null;
@@ -107,6 +128,14 @@ export class BigQueryClient {
   // ========================================================================
   
   async configure(config: BigQueryConfig): Promise<void> {
+    logFlow('CONFIGURE', 'ENTRY', 'Configuring BigQuery client', { 
+      projectId: config.projectId,
+      datasetId: config.datasetId,
+      tableId: config.tableId,
+      hasKeyFile: !!config.keyFilename,
+      hasCredentials: !!config.credentials
+    });
+    
     this.config = config;
     this.columnsFetched = false; // Reset columns cache on reconfigure
     
@@ -129,22 +158,31 @@ export class BigQueryClient {
       // Test connection
       await this.testConnection();
       
+      logFlow('CONFIGURE', 'EXIT', `BigQuery connected: ${config.projectId}.${config.datasetId}.${config.tableId}`);
       console.log(`✅ BigQuery connected: ${config.projectId}.${config.datasetId}.${config.tableId}`);
     } catch (error) {
-      throw new Error(`Failed to configure BigQuery: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logFlow('CONFIGURE', 'ERROR', 'Failed to configure BigQuery', { error: errorMessage });
+      throw new Error(`Failed to configure BigQuery: ${errorMessage}`);
     }
   }
 
   private async testConnection(): Promise<void> {
     if (!this.table) {
+      logFlow('TEST_CONNECTION', 'ERROR', 'BigQuery table not configured');
       throw new Error('BigQuery table not configured');
     }
 
+    logFlow('TEST_CONNECTION', 'ENTRY', 'Testing BigQuery connection');
     try {
       const [metadata] = await this.table.getMetadata();
-      console.log(`Table schema verified: ${metadata.schema?.fields?.length || 0} fields`);
+      const fieldCount = metadata.schema?.fields?.length || 0;
+      logFlow('TEST_CONNECTION', 'EXIT', `Table schema verified: ${fieldCount} fields`, { fieldCount });
+      console.log(`Table schema verified: ${fieldCount} fields`);
     } catch (error) {
-      throw new Error(`BigQuery connection test failed: ${error instanceof Error ? error.message : String(error)}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logFlow('TEST_CONNECTION', 'ERROR', 'BigQuery connection test failed', { error: errorMessage });
+      throw new Error(`BigQuery connection test failed: ${errorMessage}`);
     }
   }
 
@@ -160,15 +198,28 @@ export class BigQueryClient {
     parameters: ReportParameters
   ): Promise<QueryResult> {
     const startTime = Date.now();
+    logFlow('EXECUTE_QUERY', 'ENTRY', 'Executing analytical query', { 
+      intent: parseResult.intent,
+      aggregationType: parseResult.aggregationType,
+      columnCount: parseResult.columns.length,
+      filterCount: Object.keys(parseResult.filters || {}).length
+    });
     
     try {
       // Generate SQL from parsed query
       const sql = this.generateAnalyticalSQL(parseResult, parameters);
+      logFlow('SQL_GENERATION', 'INFO', 'Generated SQL query', { sql });
       
       // Check cache
       const cacheKey = this.getCacheKey(sql, parameters);
       const cached = this.getFromCache(cacheKey);
       if (cached) {
+        logFlow('EXECUTE_QUERY', 'EXIT', 'Returning cached query results', { 
+          rowCount: cached.length,
+          executionTime: Date.now() - startTime,
+          cached: true
+        });
+        
         return {
           success: true,
           data: cached,
@@ -185,7 +236,9 @@ export class BigQueryClient {
       }
 
       // Execute query
+      logFlow('SQL_EXECUTE', 'ENTRY', 'Executing SQL query against BigQuery');
       const results = await this.executeQuery(sql);
+      logFlow('SQL_EXECUTE', 'EXIT', 'SQL query execution completed', { rowCount: results.length });
       
       // Cache results
       this.setCache(cacheKey, results);
@@ -193,13 +246,20 @@ export class BigQueryClient {
       // Format results based on query intent
       const formattedData = this.formatAnalyticalResults(results, parseResult);
 
+      const executionTime = Date.now() - startTime;
+      logFlow('EXECUTE_QUERY', 'EXIT', 'Query execution completed successfully', { 
+        rowCount: results.length,
+        executionTime: `${executionTime}ms`,
+        cached: false
+      });
+      
       return {
         success: true,
         data: formattedData,
         summary: this.generateResultSummary(formattedData, parseResult),
         metadata: {
           rows_processed: results.length,
-          execution_time_ms: Date.now() - startTime,
+          execution_time_ms: executionTime,
           cached: false,
           columns_used: parseResult.columns
             .map(col => col.mappedColumns || [])
@@ -209,16 +269,24 @@ export class BigQueryClient {
       };
 
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const executionTime = Date.now() - startTime;
+      
+      logFlow('EXECUTE_QUERY', 'ERROR', 'Query execution failed', { 
+        error: errorMessage,
+        executionTime: `${executionTime}ms`
+      });
+      
       return {
         success: false,
         error: {
           type: 'COMPUTATION_ERROR',
-          message: error instanceof Error ? error.message : String(error),
+          message: errorMessage,
           suggestions: this.getErrorSuggestions(error)
         },
         metadata: {
           rows_processed: 0,
-          execution_time_ms: Date.now() - startTime,
+          execution_time_ms: executionTime,
           cached: false,
           columns_used: []
         }
@@ -230,8 +298,19 @@ export class BigQueryClient {
    * Execute predefined report queries
    */
   async executeReportQuery(sql: string, parameters: ReportParameters): Promise<any[]> {
+    logFlow('REPORT_QUERY', 'ENTRY', 'Executing report query', { parameters });
     const parameterizedSQL = this.replaceParameters(sql, parameters);
-    return await this.executeQuery(parameterizedSQL);
+    logFlow('SQL_GENERATION', 'INFO', 'Generated parameterized SQL', { sql: parameterizedSQL });
+    
+    try {
+      const results = await this.executeQuery(parameterizedSQL);
+      logFlow('REPORT_QUERY', 'EXIT', 'Report query execution completed', { rowCount: results.length });
+      return results;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logFlow('REPORT_QUERY', 'ERROR', 'Report query execution failed', { error: errorMessage });
+      throw error;
+    }
   }
 
   // ========================================================================
@@ -414,27 +493,44 @@ export class BigQueryClient {
   // QUERY EXECUTION AND UTILITIES
   // ========================================================================
 
+  /**
+   * Execute a SQL query against BigQuery
+   */
   private async executeQuery(sql: string): Promise<any[]> {
     if (!this.bigquery) {
+      logFlow('EXECUTE_QUERY', 'ERROR', 'BigQuery client not initialized');
       throw new Error('BigQuery client not initialized');
     }
 
+    logFlow('EXECUTE_QUERY', 'ENTRY', 'Executing SQL query', { 
+      sqlLength: sql.length,
+      sqlPreview: sql.substring(0, 100) + (sql.length > 100 ? '...' : '')
+    });
+    
+    const startTime = Date.now();
     try {
-      const [job] = await this.bigquery.createQueryJob({
+      // Execute the query
+      const [rows] = await this.bigquery.query({
         query: sql,
-        location: 'US', // Adjust based on your dataset location
-        jobTimeoutMs: 60000, // 60 second timeout
+        location: 'US',  // Adjust based on your dataset location
       });
 
-      console.log(`Query job created: ${job.id}`);
-      
-      const [rows] = await job.getQueryResults();
-      console.log(`Query returned ${rows.length} rows`);
-      
+      const executionTime = Date.now() - startTime;
+      logFlow('EXECUTE_QUERY', 'EXIT', 'Query execution completed', { 
+        rowCount: rows.length, 
+        executionTime: `${executionTime}ms` 
+      });
       return rows;
     } catch (error) {
-      console.error('BigQuery execution error:', error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const executionTime = Date.now() - startTime;
+      
+      logFlow('EXECUTE_QUERY', 'ERROR', 'Query execution failed', { 
+        error: errorMessage,
+        executionTime: `${executionTime}ms`
+      });
+      console.error('BigQuery query execution error:', error);
+      throw new Error(`Query execution failed: ${errorMessage}`);
     }
   }
 
@@ -597,7 +693,7 @@ export class BigQueryClient {
   private getFromCache(key: string): any | null {
     const cached = this.queryCache.get(key);
     if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
-      return cached.data;
+        return cached.data;
     }
     
     if (cached) {
