@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.54.0",
     "@google-cloud/bigquery": "^7.9.4",
     "@modelcontextprotocol/sdk": "^0.5.0",
     "@types/express": "^5.0.3",

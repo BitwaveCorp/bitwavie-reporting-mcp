@@ -911,7 +911,7 @@ export class BigQueryClient {
    * @param column The column name to get metadata for
    * @returns Column metadata including type, description, and aggregation capabilities
    */
-  private getColumnMetadata(column: string): any {
+  public getColumnMetadata(column: string): any {
     // First check if we have predefined metadata for this column
     const predefinedMetadata = this.predefinedColumnMetadata[column];
     
