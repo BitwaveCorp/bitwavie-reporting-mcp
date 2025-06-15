@@ -554,60 +554,47 @@ Please map these columns to the appropriate BigQuery columns based on the query 
              lowerColumn.includes('pnl');
     });
     
-    // Create the response text using HTML formatting for better preservation in the client
-    let text = `📋 <b>Gain/Loss Analysis</b><br><br>`;
-    text += `For your query: "${originalQuery}"<br><br>`;
-    text += `Here are the gain/loss related columns you might want to use:<br><br>`;
+    // Create the response text using plain text formatting that works even without HTML rendering
+    let text = `📋 GAIN/LOSS ANALYSIS\n\n`;
+    text += `For your query: "${originalQuery}"\n\n`;
+    text += `Here are the gain/loss related columns you might want to use:\n\n`;
     
     // Add gain/loss columns with descriptions and numbers for selection
     if (gainLossColumns.length > 0) {
-      text += `<h3>Gain/Loss Columns</h3>`;
-      text += `<div style="margin-left: 10px;">`;
+      text += `=== GAIN/LOSS COLUMNS ===\n\n`;
       
       gainLossColumns.forEach((column, index) => {
         const description = columnMetadata[column]?.description || 'No description available';
         const type = columnMetadata[column]?.type || 'UNKNOWN';
         
-        // Format each column entry with proper spacing using HTML
-        text += `<div style="margin-bottom: 15px;">`;
-        text += `<b>${index + 1}. <code>${column}</code></b><br>`;
-        text += `<div style="margin-left: 20px;">${description} (${type})</div>`;
-        text += `</div>`;
+        // Format each column entry with proper spacing using plain text
+        text += `${(index + 1).toString().padStart(2)}. ${column}\n`;
+        text += `   ${description} (${type})\n\n`;
       });
-      
-      text += `</div>`;
     } else {
-      text += `<br>No specific gain/loss columns found. Here are some financial columns you might want to use:<br><br>`;
+      text += `No specific gain/loss columns found. Here are some financial columns you might want to use:\n\n`;
     }
     
-    // Add example complete queries with better formatting using HTML
-    text += `<h3>Example Complete Queries</h3>`;
-    text += `<ul>`;
-    text += `<li>"Sum shortTermGainLoss for all transactions"</li>`;
-    text += `<li>"What is my total longTermGainLoss for ETH"</li>`;
-    text += `<li>"Show me total gainLoss grouped by asset"</li>`;
-    text += `</ul>`;
+    // Add example complete queries with better formatting using plain text
+    text += `=== EXAMPLE COMPLETE QUERIES ===\n\n`;
+    text += `• "Sum shortTermGainLoss for all transactions"\n`;
+    text += `• "What is my total longTermGainLoss for ETH"\n`;
+    text += `• "Show me total gainLoss grouped by asset"\n\n`;
     
-    // Add clear instructions for selection with better formatting using HTML
-    text += `<h3>How to Proceed</h3>`;
-    text += `Please do one of the following:<br><br>`;
+    // Add clear instructions for selection with better formatting using plain text
+    text += `=== HOW TO PROCEED ===\n\n`;
+    text += `Please do one of the following:\n\n`;
     
-    text += `<div style="margin-bottom: 15px;">`;
-    text += `<b>1️⃣ Enter the number of the column you want to use</b><br>`;
-    text += `<div style="margin-left: 20px;">Example: "2" for longTermGainLoss</div>`;
-    text += `</div>`;
+    text += `1️⃣ Enter the number of the column you want to use\n`;
+    text += `   Example: "2" for longTermGainLoss\n\n`;
     
-    text += `<div style="margin-bottom: 15px;">`;
-    text += `<b>2️⃣ Type a complete query specifying the column</b><br>`;
-    text += `<div style="margin-left: 20px;">Example: "Sum shortTermGainLoss grouped by asset"</div>`;
-    text += `</div>`;
+    text += `2️⃣ Type a complete query specifying the column\n`;
+    text += `   Example: "Sum shortTermGainLoss grouped by asset"\n\n`;
     
-    text += `<div style="margin-bottom: 15px;">`;
-    text += `<b>3️⃣ Type "use [column name]"</b><br>`;
-    text += `<div style="margin-left: 20px;">Example: "use shortTermGainLoss"</div>`;
-    text += `</div>`;
+    text += `3️⃣ Type "use [column name]"\n`;
+    text += `   Example: "use shortTermGainLoss"\n\n`;
     
-    text += `<br>Your selection will be used to execute the query.`;
+    text += `Your selection will be used to execute the query.`;
     
     // Create a data object with column mappings for the client to use
     const columnMappingsData: Record<string, string> = {};
@@ -685,69 +672,56 @@ Please map these columns to the appropriate BigQuery columns based on the query 
       }
     }
     
-    // Create the response text using HTML formatting for better preservation in the client
-    let text = `📋 <b>Please Specify the Columns You Need</b><br><br>`;
-    text += `For your query: "${originalQuery}"<br><br>`;
-    text += `I need you to specify which columns you want to use in your query.<br><br>`;
-    text += `<h2>Available Columns by Category</h2>`;
+    // Create the response text using plain text formatting that works even without HTML rendering
+    let text = `📋 PLEASE SPECIFY THE COLUMNS YOU NEED\n\n`;
+    text += `For your query: "${originalQuery}"\n\n`;
+    text += `I need you to specify which columns you want to use in your query.\n\n`;
+    text += `=== AVAILABLE COLUMNS BY CATEGORY ===\n`;
     
     // Create a flat list of all columns for indexing
     const allColumnsList: string[] = [];
     
-    // Add grouped columns to the text with index numbers using HTML formatting
+    // Add grouped columns to the text with index numbers using plain text formatting
     let columnIndex = 1;
     for (const [category, columns] of Object.entries(groupedColumns)) {
       if (columns.length > 0) {
-        text += `<h3>${category} Columns</h3>`;
-        text += `<div style="margin-left: 10px;">`;
+        text += `\n--- ${category.toUpperCase()} COLUMNS ---\n\n`;
         
         // Create a table-like structure with numbers and columns
         for (const column of columns) {
           const description = columnMetadata[column]?.description || 'No description available';
           const type = columnMetadata[column]?.type || 'UNKNOWN';
           
-          // Format each column entry with proper spacing using HTML
-          text += `<div style="margin-bottom: 15px;">`;
-          text += `<b>${columnIndex}. <code>${column}</code></b><br>`;
-          text += `<div style="margin-left: 20px;">${description} (${type})</div>`;
-          text += `</div>`;
+          // Format each column entry with proper spacing using plain text
+          text += `${columnIndex.toString().padStart(2)}. ${column}\n`;
+          text += `   ${description} (${type})\n\n`;
           
           allColumnsList.push(column);
           columnIndex++;
         }
-        
-        text += `</div>`;
       }
     }
     
-    // Add example queries with better formatting using HTML
-    text += `<h3>Example Complete Queries</h3>`;
-    text += `<ul>`;
-    text += `<li>"Sum amount for all rows where asset is ETH"</li>`;
-    text += `<li>"Count transactions grouped by asset"</li>`;
-    text += `<li>"Average price where timestamp is after 2023-01-01"</li>`;
-    text += `</ul>`;
+    // Add example queries with better formatting using plain text
+    text += `=== EXAMPLE COMPLETE QUERIES ===\n\n`;
+    text += `• "Sum amount for all rows where asset is ETH"\n`;
+    text += `• "Count transactions grouped by asset"\n`;
+    text += `• "Average price where timestamp is after 2023-01-01"\n\n`;
     
-    // Add clear instructions for selection with better formatting using HTML
-    text += `<h3>How to Proceed</h3>`;
-    text += `Please do one of the following:<br><br>`;
+    // Add clear instructions for selection with better formatting using plain text
+    text += `=== HOW TO PROCEED ===\n\n`;
+    text += `Please do one of the following:\n\n`;
     
-    text += `<div style="margin-bottom: 15px;">`;
-    text += `<b>1️⃣ Enter the number of the column you want to use</b><br>`;
-    text += `<div style="margin-left: 20px;">Example: "22" for shortTermGainLoss</div>`;
-    text += `</div>`;
+    text += `1️⃣ Enter the number of the column you want to use\n`;
+    text += `   Example: "22" for shortTermGainLoss\n\n`;
     
-    text += `<div style="margin-bottom: 15px;">`;
-    text += `<b>2️⃣ Type a complete query specifying the column</b><br>`;
-    text += `<div style="margin-left: 20px;">Example: "Sum shortTermGainLoss grouped by asset"</div>`;
-    text += `</div>`;
+    text += `2️⃣ Type a complete query specifying the column\n`;
+    text += `   Example: "Sum shortTermGainLoss grouped by asset"\n\n`;
     
-    text += `<div style="margin-bottom: 15px;">`;
-    text += `<b>3️⃣ Type "use [column name]"</b><br>`;
-    text += `<div style="margin-left: 20px;">Example: "use shortTermGainLoss"</div>`;
-    text += `</div>`;
+    text += `3️⃣ Type "use [column name]"\n`;
+    text += `   Example: "use shortTermGainLoss"\n\n`;
     
-    text += `<br>Your selection will be used to execute the query.`;
+    text += `Your selection will be used to execute the query.`;
     
     // Create a data object with column mappings for the client to use
     const columnMappingsData: Record<string, string> = {};
