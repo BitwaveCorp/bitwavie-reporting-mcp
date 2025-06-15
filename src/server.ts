@@ -317,9 +317,8 @@ export class ReportingMCPServer {
             const newQuery = `Show me ${selectedColumn} data`;
             
             // Create confirmed mappings
-            const newConfirmedMappings = {
-              [selectedColumn]: selectedColumn
-            };
+            const newConfirmedMappings: Record<string, string> = {};
+            newConfirmedMappings[selectedColumn] = selectedColumn;
             
             logFlow('COLUMN_SELECTION', 'INFO', 'Created confirmed mapping from user selection', { 
               selectedColumn,
@@ -339,7 +338,7 @@ export class ReportingMCPServer {
             });
             
             // Fallback: If we can't match the user's input to a column, provide a clear error message
-            // instead of replaying the column list
+            // Create a fallback error message
             return {
               content: [{
                 type: 'text',
@@ -349,7 +348,10 @@ export class ReportingMCPServer {
                       `3. Type a complete query with the column name\n\n` +
                       `Let's try again with the column selection.`
               }],
-              data: previousResponse.data, // Keep the same column mappings data
+              data: previousResponse?.data || {
+                type: 'error',
+                columnMappings: {}
+              }, // Keep the same column mappings data or provide a fallback
               needsConfirmation: true // Still need confirmation
             };
           }
@@ -366,10 +368,115 @@ export class ReportingMCPServer {
         }
       }
       
-      // If we don't have confirmed mappings, skip the query parser's column mapping entirely
+      // If we don't have confirmed mappings, check for special commands first, then show column lists
       if (!confirmedMappings) {
+        const lowerQuery = query.toLowerCase().trim();
+        
+        // Special case 1: Handle "use [column]" command directly even without previousResponse
+        if (lowerQuery.startsWith('use ')) {
+          const columnName = lowerQuery.substring(4).trim();
+          logFlow('DIRECT_COLUMN_SELECTION', 'INFO', 'Detected direct column selection via "use" command', { 
+            columnName,
+            originalQuery: query
+          });
+          
+          // Create a new query that uses the selected column
+          const newQuery = `Show me ${columnName} data`;
+          
+          // Create confirmed mappings
+          const newConfirmedMappings: Record<string, string> = {};
+          newConfirmedMappings[columnName] = columnName;
+          
+          logFlow('DIRECT_COLUMN_SELECTION', 'INFO', 'Created confirmed mapping from direct selection', { 
+            selectedColumn: columnName,
+            newConfirmedMappings,
+            newQuery
+          });
+          
+          // Process with the new confirmed mappings
+          return await this.handleAnalyzeData({
+            query: newQuery,
+            confirmedMappings: newConfirmedMappings
+          });
+        }
+        
+        // Special case 2: Try to handle direct column number selection
+        // This is a best-effort approach since we don't have the previous column mappings
+        // We'll try to fetch the columns and see if we can match by position
+        if (/^\d+$/.test(lowerQuery)) {
+          const columnNumber = parseInt(lowerQuery, 10);
+          logFlow('DIRECT_NUMBER_SELECTION', 'INFO', 'Detected possible column selection by number', { 
+            columnNumber,
+            originalQuery: query
+          });
+          
+          try {
+            // Get all available columns
+            const availableColumns = await this.bigQueryClient.getAvailableColumns();
+            
+            // Filter to gain/loss columns for better matching
+            const gainLossColumns = availableColumns.filter(column => {
+              const lowerColumn = column.toLowerCase();
+              return lowerColumn.includes('gain') || 
+                     lowerColumn.includes('loss') || 
+                     lowerColumn.includes('profit') || 
+                     lowerColumn.includes('pnl');
+            });
+            
+            // Try to find the column by position (1-indexed)
+            let selectedColumn = null;
+            if (columnNumber > 0 && columnNumber <= gainLossColumns.length) {
+              selectedColumn = gainLossColumns[columnNumber - 1];
+              
+              logFlow('DIRECT_NUMBER_SELECTION', 'INFO', 'Found column by number position', { 
+                columnNumber,
+                selectedColumn,
+                totalGainLossColumns: gainLossColumns.length
+              });
+              
+              // Create a new query that uses the selected column
+              const newQuery = `Show me ${selectedColumn} data`;
+              
+              // Create confirmed mappings
+              const newConfirmedMappings: Record<string, string> = {};
+              if (selectedColumn) {
+                newConfirmedMappings[selectedColumn] = selectedColumn;
+              }
+              
+              logFlow('DIRECT_NUMBER_SELECTION', 'INFO', 'Created confirmed mapping from number selection', { 
+                selectedColumn,
+                newConfirmedMappings,
+                newQuery
+              });
+              
+              // Process with the new confirmed mappings
+              return await this.handleAnalyzeData({
+                query: newQuery,
+                confirmedMappings: newConfirmedMappings
+              });
+            } else {
+              logFlow('DIRECT_NUMBER_SELECTION', 'ERROR', 'Column number out of range', { 
+                columnNumber,
+                totalGainLossColumns: gainLossColumns.length
+              });
+              
+              // Return a helpful error message
+              return {
+                content: [{
+                  type: 'text',
+                  text: `The column number ${columnNumber} is out of range. Please enter a number between 1 and ${gainLossColumns.length}, or type "use" followed by the exact column name.`
+                }],
+                needsConfirmation: true
+              };
+            }
+          } catch (error) {
+            logFlow('DIRECT_NUMBER_SELECTION', 'ERROR', 'Error fetching columns for number selection', { 
+              error: error instanceof Error ? error.message : String(error)
+            });
+          }
+        }
+        
         // Check if this is a gain/loss query
-        const lowerQuery = query.toLowerCase();
         const isGainLossQuery = lowerQuery.includes('gain') || lowerQuery.includes('loss') || lowerQuery.includes('profit');
         
         if (isGainLossQuery) {
