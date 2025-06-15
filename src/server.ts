@@ -240,29 +240,29 @@ export class ReportingMCPServer {
         };
       }
       
-      // Parse the natural language query
-      let parseResult = await this.queryParser.parseQuery(query);
-      
-      // Apply any confirmed mappings if provided
-      if (confirmedMappings) {
-        parseResult = this.applyConfirmedMappings(parseResult, confirmedMappings);
-      } else if (this.anthropic) {
-        // Use Claude for intelligent column mapping if no confirmed mappings provided
-        try {
-          logFlow('CLAUDE_MAPPING', 'ENTRY', 'Using Claude for intelligent column mapping', { query });
-          parseResult = await this.useIntelligentColumnMapping(parseResult, query);
-          logFlow('CLAUDE_MAPPING', 'EXIT', 'Claude column mapping completed', { 
-            columnCount: parseResult.columns.length,
-            confirmedCount: parseResult.columns.filter(col => col.confirmed).length
-          });
-        } catch (error) {
-          console.error('Error using Claude for column mapping:', error);
-          logFlow('CLAUDE_MAPPING', 'ERROR', 'Claude column mapping failed', { error: String(error) });
-          // Instead of falling back to regular mapping, we'll show all columns and ask for explicit mapping
-          // We'll completely bypass the default column mappings
+      // If we don't have confirmed mappings, skip the query parser's column mapping entirely
+      if (!confirmedMappings) {
+        // Check if this is a gain/loss query
+        const lowerQuery = query.toLowerCase();
+        const isGainLossQuery = lowerQuery.includes('gain') || lowerQuery.includes('loss') || lowerQuery.includes('profit');
+        
+        if (isGainLossQuery) {
+          logFlow('GAIN_LOSS_QUERY', 'INFO', 'Detected gain/loss query, showing relevant columns', { query });
+          return await this.formatGainLossColumnList(query);
+        } else {
+          // For all other queries without confirmed mappings, show the full column list
+          logFlow('COLUMN_LIST', 'INFO', 'No confirmed mappings, showing full column list', { query });
           return await this.formatFullColumnList(query);
         }
       }
+      
+      // Parse the natural language query
+      let parseResult = await this.queryParser.parseQuery(query);
+      
+      // Apply confirmed mappings
+      parseResult = this.applyConfirmedMappings(parseResult, confirmedMappings);
+      
+      // At this point, all columns should be confirmed since we have confirmedMappings
       
       // Check if we still need column mapping confirmation
       const needsConfirmation = parseResult.columns.some(col => !col.confirmed);
@@ -441,6 +441,77 @@ Please map these columns to the appropriate BigQuery columns based on the query 
       console.error('Error parsing Claude response:', error, content);
       throw new Error('Failed to parse Claude response');
     }
+  }
+
+  /**
+   * Shows gain/loss specific columns for gain/loss related queries
+   * @param originalQuery The original user query
+   * @returns Formatted response with gain/loss columns highlighted
+   */
+  private async formatGainLossColumnList(originalQuery: string): Promise<any> {
+    // Get all available columns from BigQuery
+    let availableColumns: string[] = [];
+    let columnMetadata: Record<string, any> = {};
+    
+    try {
+      availableColumns = await this.bigQueryClient.getAvailableColumns();
+      
+      // Get metadata for each column
+      for (const column of availableColumns) {
+        try {
+          const metadata = await this.bigQueryClient.getColumnMetadata(column);
+          if (metadata) {
+            columnMetadata[column] = metadata;
+          }
+        } catch (error) {
+          console.warn(`Could not get metadata for column ${column}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching available columns:', error);
+      // Continue with empty array if we can't fetch columns
+    }
+    
+    // Filter for gain/loss related columns
+    const gainLossColumns = availableColumns.filter(column => {
+      const lowerColumn = column.toLowerCase();
+      return lowerColumn.includes('gain') || 
+             lowerColumn.includes('loss') || 
+             lowerColumn.includes('profit') || 
+             lowerColumn.includes('pnl');
+    });
+    
+    // Create the response text
+    let text = `📋 **Gain/Loss Analysis**\n\nFor your query: "${originalQuery}"\n\n`;
+    text += `Here are the gain/loss related columns you might want to use:\n\n`;
+    
+    // Add gain/loss columns with descriptions
+    if (gainLossColumns.length > 0) {
+      text += `**Gain/Loss Columns:**\n`;
+      for (const column of gainLossColumns) {
+        const description = columnMetadata[column]?.description || 'No description available';
+        const type = columnMetadata[column]?.type || 'UNKNOWN';
+        text += `- \`${column}\`: ${description} (${type})\n`;
+      }
+      text += '\n';
+    } else {
+      text += `No specific gain/loss columns found. Here are some financial columns you might want to use:\n\n`;
+    }
+    
+    // Add example queries
+    text += `**Example Queries:**\n`;
+    text += `- "Sum shortTermGainLoss for all transactions"\n`;
+    text += `- "What is my total longTermGainLoss for ETH"\n`;
+    text += `- "Show me total gainLoss grouped by asset"\n\n`;
+    
+    text += `Please rephrase your query to clearly specify which gain/loss column you want to use.`;
+    
+    return {
+      content: [{
+        type: 'text',
+        text
+      }]
+    };
   }
 
   /**
