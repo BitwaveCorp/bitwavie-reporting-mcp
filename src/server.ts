@@ -226,7 +226,7 @@ export class ReportingMCPServer {
   }
 
   private async handleAnalyzeData(args: any): Promise<any> {
-    const { query = '', confirmedMappings } = args;
+    const { query = '', confirmedMappings, previousResponse } = args;
     
     logFlow('ANALYZE_DATA', 'ENTRY', 'Analyzing data with query', { query, hasMappings: !!confirmedMappings });
     
@@ -238,6 +238,60 @@ export class ReportingMCPServer {
             text: '❌ **Error**: Please provide a valid query.'
           }]
         };
+      }
+      
+      // Handle responses to column selection prompts
+      if (previousResponse && previousResponse.data) {
+        const { type, columnMappings } = previousResponse.data;
+        
+        if ((type === 'gain_loss_columns' || type === 'full_columns') && columnMappings) {
+          logFlow('COLUMN_SELECTION', 'INFO', 'Processing user response to column selection', { query });
+          
+          // Check if the user provided a column number, a column name, or "use [column]"
+          const lowerQuery = query.toLowerCase().trim();
+          let selectedColumn = null;
+          
+          // Case 1: User entered a number
+          if (/^\d+$/.test(lowerQuery) && columnMappings[lowerQuery]) {
+            selectedColumn = columnMappings[lowerQuery];
+            logFlow('COLUMN_SELECTION', 'INFO', 'User selected column by number', { number: lowerQuery, column: selectedColumn });
+          }
+          // Case 2: User entered "use [column]"
+          else if (lowerQuery.startsWith('use ')) {
+            const columnName = lowerQuery.substring(4).trim().toLowerCase();
+            if (columnMappings[columnName]) {
+              selectedColumn = columnMappings[columnName];
+              logFlow('COLUMN_SELECTION', 'INFO', 'User selected column with "use" command', { column: selectedColumn });
+            }
+          }
+          // Case 3: User entered a column name directly
+          else if (columnMappings[lowerQuery]) {
+            selectedColumn = columnMappings[lowerQuery];
+            logFlow('COLUMN_SELECTION', 'INFO', 'User selected column by name', { column: selectedColumn });
+          }
+          
+          // If we found a selected column, create a confirmed mapping
+          if (selectedColumn) {
+            // Create a new query that uses the selected column
+            const newQuery = `Show me ${selectedColumn} data`;
+            
+            // Create confirmed mappings
+            const newConfirmedMappings = {
+              [selectedColumn]: selectedColumn
+            };
+            
+            logFlow('COLUMN_SELECTION', 'INFO', 'Created confirmed mapping from user selection', { 
+              selectedColumn,
+              newConfirmedMappings
+            });
+            
+            // Process with the new confirmed mappings
+            return await this.handleAnalyzeData({
+              query: newQuery,
+              confirmedMappings: newConfirmedMappings
+            });
+          }
+        }
       }
       
       // If we don't have confirmed mappings, skip the query parser's column mapping entirely
@@ -504,32 +558,49 @@ Please map these columns to the appropriate BigQuery columns based on the query 
     let text = `📋 **Gain/Loss Analysis**\n\nFor your query: "${originalQuery}"\n\n`;
     text += `Here are the gain/loss related columns you might want to use:\n\n`;
     
-    // Add gain/loss columns with descriptions
+    // Add gain/loss columns with descriptions and numbers for selection
     if (gainLossColumns.length > 0) {
       text += `**Gain/Loss Columns:**\n`;
-      for (const column of gainLossColumns) {
+      gainLossColumns.forEach((column, index) => {
         const description = columnMetadata[column]?.description || 'No description available';
         const type = columnMetadata[column]?.type || 'UNKNOWN';
-        text += `- \`${column}\`: ${description} (${type})\n`;
-      }
+        text += `${index + 1}. \`${column}\`: ${description} (${type})\n`;
+      });
       text += '\n';
     } else {
       text += `No specific gain/loss columns found. Here are some financial columns you might want to use:\n\n`;
     }
     
-    // Add example queries
-    text += `**Example Queries:**\n`;
+    // Add example complete queries
+    text += `**Example Complete Queries:**\n`;
     text += `- "Sum shortTermGainLoss for all transactions"\n`;
     text += `- "What is my total longTermGainLoss for ETH"\n`;
     text += `- "Show me total gainLoss grouped by asset"\n\n`;
     
-    text += `Please rephrase your query to clearly specify which gain/loss column you want to use.`;
+    // Add clear instructions for selection
+    text += `**To proceed, please do one of the following:**\n`;
+    text += `1. Enter the number of the column you want to use (e.g., "1" for the first column)\n`;
+    text += `2. Type a complete query specifying the column (e.g., "Sum shortTermGainLoss grouped by asset")\n`;
+    text += `3. Type "use [column name]" (e.g., "use shortTermGainLoss")\n\n`;
+    text += `Your selection will be used to execute the query.`;
+    
+    // Create a data object with column mappings for the client to use
+    const columnMappingsData: Record<string, string> = {};
+    gainLossColumns.forEach((column, index) => {
+      columnMappingsData[`${index + 1}`] = column; // Map numbers to column names
+      columnMappingsData[column.toLowerCase()] = column; // Map lowercase column names to actual column names
+    });
     
     return {
       content: [{
         type: 'text',
         text
-      }]
+      }],
+      data: {
+        columnMappings: columnMappingsData,
+        type: 'gain_loss_columns'
+      },
+      needsConfirmation: true // Mark as needing confirmation so the client knows to wait for user input
     };
   }
 
@@ -593,29 +664,55 @@ Please map these columns to the appropriate BigQuery columns based on the query 
     let text = `📋 **Please Specify the Columns You Need**\n\nFor your query: "${originalQuery}"\n\n`;
     text += `I need you to specify which columns you want to use in your query. Here are all available columns grouped by category:\n\n`;
     
-    // Add grouped columns to the text
+    // Create a flat list of all columns for indexing
+    const allColumnsList: string[] = [];
+    
+    // Add grouped columns to the text with index numbers
+    let columnIndex = 1;
     for (const [category, columns] of Object.entries(groupedColumns)) {
       if (columns.length > 0) {
         text += `**${category} Columns:**\n`;
         for (const column of columns) {
           const description = columnMetadata[column]?.description || 'No description available';
           const type = columnMetadata[column]?.type || 'UNKNOWN';
-          text += `- \`${column}\`: ${description} (${type})\n`;
+          text += `${columnIndex}. \`${column}\`: ${description} (${type})\n`;
+          allColumnsList.push(column);
+          columnIndex++;
         }
         text += '\n';
       }
     }
     
-    // Add example prompt
-    text += `**Example Query Format:**\n`;
-    text += `"Sum shortTermGainLoss column for all rows where asset column is ETH"\n\n`;
-    text += `Please rephrase your query to clearly specify which columns you want to use.`;
+    // Add example queries
+    text += `**Example Complete Queries:**\n`;
+    text += `- "Sum amount for all rows where asset is ETH"\n`;
+    text += `- "Count transactions grouped by asset"\n`;
+    text += `- "Average price where timestamp is after 2023-01-01"\n\n`;
+    
+    // Add clear instructions for selection
+    text += `**To proceed, please do one of the following:**\n`;
+    text += `1. Enter the number of the column you want to use (e.g., "1" for the first column)\n`;
+    text += `2. Type a complete query specifying the column (e.g., "Sum amount grouped by asset")\n`;
+    text += `3. Type "use [column name]" (e.g., "use amount")\n\n`;
+    text += `Your selection will be used to execute the query.`;
+    
+    // Create a data object with column mappings for the client to use
+    const columnMappingsData: Record<string, string> = {};
+    allColumnsList.forEach((column, index) => {
+      columnMappingsData[`${index + 1}`] = column; // Map numbers to column names
+      columnMappingsData[column.toLowerCase()] = column; // Map lowercase column names to actual column names
+    });
     
     return {
       content: [{
         type: 'text',
         text
-      }]
+      }],
+      data: {
+        columnMappings: columnMappingsData,
+        type: 'full_columns'
+      },
+      needsConfirmation: true // Mark as needing confirmation so the client knows to wait for user input
     };
   }
 
