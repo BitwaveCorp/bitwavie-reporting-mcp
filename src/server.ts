@@ -259,7 +259,8 @@ export class ReportingMCPServer {
           console.error('Error using Claude for column mapping:', error);
           logFlow('CLAUDE_MAPPING', 'ERROR', 'Claude column mapping failed', { error: String(error) });
           // Instead of falling back to regular mapping, we'll show all columns and ask for explicit mapping
-          return await this.formatFullColumnList(parseResult, query);
+          // We'll completely bypass the default column mappings
+          return await this.formatFullColumnList(query);
         }
       }
       
@@ -444,11 +445,10 @@ Please map these columns to the appropriate BigQuery columns based on the query 
 
   /**
    * Shows a full list of available columns when Claude mapping fails
-   * @param parseResult The initial parse result
    * @param originalQuery The original user query
    * @returns Formatted response with all available columns and example
    */
-  private async formatFullColumnList(parseResult: QueryParseResult, originalQuery: string): Promise<any> {
+  private async formatFullColumnList(originalQuery: string): Promise<any> {
     // Get all available columns from BigQuery
     let availableColumns: string[] = [];
     let columnMetadata: Record<string, any> = {};
