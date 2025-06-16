@@ -411,12 +411,15 @@ export class ReportingMCPServer {
 
     // Register JSON-RPC endpoint
     this.server.post('/rpc', (req, res) => {
+      console.log('[RPC] Received request:', JSON.stringify(req.body));
       const handleRpcRequest = async () => {
         try {
           const { jsonrpc, method, params, id } = req.body;
+          console.log(`[RPC] Processing method: ${method}, id: ${id}`);
           
           // Validate JSON-RPC version
           if (jsonrpc !== '2.0') {
+            console.log(`[RPC] Invalid JSON-RPC version: ${jsonrpc}`);
             return res.status(400).json({
               jsonrpc: '2.0',
               error: { code: -32600, message: 'Invalid Request: jsonrpc version must be 2.0' },
@@ -425,9 +428,12 @@ export class ReportingMCPServer {
           }
           
           // Handle different RPC methods
+          console.log(`[RPC] Handling method: ${method}`);
           switch (method) {
             case 'test_connection':
+              console.log('[RPC] Processing test_connection request');
               const testResult = await this.handleTestConnection();
+              console.log('[RPC] test_connection result:', testResult);
               return res.json({
                 jsonrpc: '2.0',
                 result: testResult.success ? 'MCP server is working' : testResult.message,
@@ -436,8 +442,9 @@ export class ReportingMCPServer {
               
             case 'list_tools':
             case 'tools/list':
+              console.log('[RPC] Processing tools/list request');
               // Return available tools
-              return res.json({
+              const toolsResponse = {
                 jsonrpc: '2.0',
                 result: {
                   tools: [
@@ -446,10 +453,14 @@ export class ReportingMCPServer {
                   ]
                 },
                 id
-              });
+              };
+              console.log('[RPC] Returning tools list:', JSON.stringify(toolsResponse));
+              return res.json(toolsResponse);
               
             case 'analyze_actions_data':
+              console.log('[RPC] Processing analyze_actions_data request');
               if (!params || !Array.isArray(params) || params.length === 0) {
+                console.log('[RPC] Invalid params for analyze_actions_data:', params);
                 return res.status(400).json({
                   jsonrpc: '2.0',
                   error: { code: -32602, message: 'Invalid params for analyze_actions_data' },
@@ -458,19 +469,42 @@ export class ReportingMCPServer {
               }
               
               const requestData = params[0];
-              const analyzeResult = await this.handleAnalyzeData({
-                query: requestData.query,
-                confirmedMappings: requestData.confirmedMappings,
-                previousResponse: requestData.previousResponse
-              });
+              console.log('[RPC] analyze_actions_data request data:', JSON.stringify(requestData));
               
-              return res.json({
-                jsonrpc: '2.0',
-                result: analyzeResult,
-                id
-              });
+              try {
+                console.log('[RPC] Calling handleAnalyzeData with query:', requestData.query);
+                const analyzeResult = await this.handleAnalyzeData({
+                  query: requestData.query,
+                  confirmedMappings: requestData.confirmedMappings,
+                  previousResponse: requestData.previousResponse
+                });
+                
+                console.log('[RPC] handleAnalyzeData result received, length:', 
+                  JSON.stringify(analyzeResult).length);
+                
+                const response = {
+                  jsonrpc: '2.0',
+                  result: analyzeResult,
+                  id
+                };
+                
+                console.log('[RPC] Sending analyze_actions_data response');
+                return res.json(response);
+              } catch (analyzeError) {
+                console.error('[RPC] Error in handleAnalyzeData:', analyzeError);
+                return res.status(500).json({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: analyzeError instanceof Error ? analyzeError.message : 'Error processing analyze_actions_data',
+                    data: analyzeError instanceof Error ? analyzeError.stack : undefined
+                  },
+                  id
+                });
+              }
               
             default:
+              console.log(`[RPC] Method not found: ${method}`);
               return res.status(400).json({
                 jsonrpc: '2.0',
                 error: { code: -32601, message: `Method not found: ${method}` },
@@ -478,7 +512,7 @@ export class ReportingMCPServer {
               });
           }
         } catch (error) {
-          console.error('RPC error:', error);
+          console.error('[RPC] General error in RPC handler:', error);
           return res.status(500).json({
             jsonrpc: '2.0',
             error: {
@@ -492,7 +526,21 @@ export class ReportingMCPServer {
       };
       
       // Execute the async handler
-      handleRpcRequest();
+      console.log('[RPC] Starting async handler execution');
+      handleRpcRequest().catch(err => {
+        console.error('[RPC] Unhandled error in async handler:', err);
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: err instanceof Error ? err.message : 'Unhandled error in RPC handler',
+              data: err instanceof Error ? err.stack : undefined
+            },
+            id: req.body?.id
+          });
+        }
+      });
     });
   }
 
