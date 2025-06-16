@@ -494,7 +494,7 @@ export class ReportingMCPServer {
     }
   }
 
-  public async handleAnalyzeData(request: AnalyzeDataRequest): Promise<AnalyzeDataResponse> {
+  private async handleAnalyzeData(request: AnalyzeDataRequest): Promise<AnalyzeDataResponse> {
     try {
       // Validate input
       if (!request.query && !request.previousResponse) {
