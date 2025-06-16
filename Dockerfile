@@ -33,6 +33,10 @@ RUN npm ci --only=production --silent && \
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
+# Copy HTTP server files
+COPY --from=builder /app/http-server.js ./
+COPY --from=builder /app/start-http-server.sh ./
+
 # Copy any additional config files if needed
 COPY --chown=mcp-server:nodejs .env* ./
 
@@ -52,5 +56,8 @@ ENV NODE_ENV=production
 # Set Cloud Run port environment variable
 ENV PORT=8080
 
+# Make the start script executable
+RUN chmod +x ./start-http-server.sh
+
 # Start the HTTP wrapper for the MCP server
-CMD ["node", "dist/http-server.js"]
+CMD ["./start-http-server.sh"]
