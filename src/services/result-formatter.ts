@@ -66,7 +66,7 @@ export class ResultFormatter {
     logFlow('RESULT_FORMATTER', 'ENTRY', 'Formatting results', {
       success: executionResult.success,
       rowCount: executionResult.data?.length || 0,
-      executionTimeMs: executionResult.metadata.executionTimeMs
+      executionTimeMs: executionResult.metadata?.executionTimeMs || 0
     });
     
     // If execution failed, format the error
@@ -140,8 +140,9 @@ export class ResultFormatter {
       metadata: {
         rowCount: displayRows,
         totalRows,
-        executionTimeMs: executionResult.metadata?.executionTimeMs || 0,
-        ...(executionResult.metadata?.bytesProcessed !== undefined && {
+        // Ensure we handle null metadata object completely
+        executionTimeMs: executionResult.metadata ? (executionResult.metadata.executionTimeMs || 0) : 0,
+        ...(executionResult.metadata && executionResult.metadata.bytesProcessed !== undefined && {
           bytesProcessed: executionResult.metadata.bytesProcessed
         })
       }
@@ -219,7 +220,7 @@ export class ResultFormatter {
     }
     
     // Add retry information
-    if (executionResult.metadata.retryCount > 0) {
+    if (executionResult.metadata && executionResult.metadata.retryCount && executionResult.metadata.retryCount > 0) {
       errorText += `Attempted ${executionResult.metadata.retryCount} automatic corrections without success.\n\n`;
     }
     
@@ -240,7 +241,7 @@ export class ResultFormatter {
       metadata: {
         rowCount: 0,
         totalRows: 0,
-        executionTimeMs: executionResult.metadata.executionTimeMs
+        executionTimeMs: executionResult.metadata ? (executionResult.metadata.executionTimeMs || 0) : 0
       }
     };
     
