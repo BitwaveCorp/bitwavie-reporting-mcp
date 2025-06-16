@@ -202,7 +202,8 @@ export class LotsReportGenerator {
       LEFT JOIN lot_to_txn ltt ON ltt.lotId = actions.lotId
       GROUP BY lotId, ltt.txnId, lotAcquisitionTimestampSEC, asset, assetId
       ${havingConditions}
-      ORDER BY timestampSEC DESC, lotId DESC
+      -- Use lotAcquisitionTimestampSEC which is included in the GROUP BY clause
+      ORDER BY lotAcquisitionTimestampSEC DESC, lotId DESC
     `.trim();
   }
 

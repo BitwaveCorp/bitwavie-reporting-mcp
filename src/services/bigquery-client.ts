@@ -670,15 +670,51 @@ export class BigQueryClient {
   }
 
   private buildOrderByClause(parseResult: QueryParseResult): string {
-    const { intent, aggregationType } = parseResult;
+    const { intent, aggregationType, groupBy, orderBy, columns } = parseResult;
     
+    // If explicit ORDER BY is specified in the query, use it
+    if (orderBy && orderBy.length > 0) {
+      return `ORDER BY ${orderBy.map(o => o.column).join(', ')}`;
+    }
+    
+    // For aggregation queries, order by the aggregated value
     if (aggregationType === 'sum' || aggregationType === 'count') {
       // Order by the aggregated values (descending for totals)
       return 'ORDER BY 2 DESC'; // Second column is usually the aggregated value
     }
     
-    // Default ordering
-    return 'ORDER BY asset ASC, timestampSEC DESC';
+    // For GROUP BY queries, only order by columns that are in the GROUP BY clause
+    if (groupBy && groupBy.length > 0 && groupBy[0]) {
+      // This avoids the "ORDER BY expression references column which is neither grouped nor aggregated" error
+      return `ORDER BY ${groupBy[0].column} ASC`;
+    }
+    
+    // For non-aggregated queries, try to find appropriate columns to order by
+    // First check if we have timestamp-like columns
+    const timeColumns = columns.filter(col => 
+      col.name.includes('time') || 
+      col.name.includes('date') || 
+      col.name.includes('timestamp')
+    );
+    
+    if (timeColumns.length > 0 && timeColumns[0]) {
+      // Use the first time-related column for ordering
+      return `ORDER BY ${timeColumns[0].name} DESC`;
+    }
+    
+    // If we have an 'asset' column, use it as primary sort
+    const assetColumn = columns.find(col => col.name === 'asset');
+    if (assetColumn) {
+      return 'ORDER BY asset ASC';
+    }
+    
+    // Last resort: order by the first column
+    if (columns.length > 0 && columns[0]) {
+      return `ORDER BY ${columns[0].name} ASC`;
+    }
+    
+    // Fallback if we somehow have no columns
+    return '';
   }
 
   // ========================================================================
