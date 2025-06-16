@@ -464,6 +464,57 @@ export class ReportingMCPServer {
               }));
               return res.json(toolsResponse);
               
+            case 'tools/call':
+              console.log('[RPC] Processing tools/call request');
+              if (!params || typeof params !== 'object' || !params.name) {
+                console.log('[RPC] Invalid params for tools/call:', params);
+                return res.status(400).json({
+                  jsonrpc: '2.0',
+                  error: { code: -32602, message: 'Invalid params for tools/call' },
+                  id
+                });
+              }
+              
+              // Handle different tools
+              const toolName = params.name;
+              const toolArgs = params.arguments || {};
+              
+              console.log(`[RPC] tools/call for tool: ${toolName}`);
+              
+              if (toolName === 'analyze_actions_data') {
+                try {
+                  console.log('[RPC] Calling handleAnalyzeData with query:', toolArgs.query);
+                  const analyzeResult = await this.handleAnalyzeData({
+                    query: toolArgs.query,
+                    confirmedMappings: toolArgs.confirmedMappings,
+                    previousResponse: toolArgs.previousResponse
+                  });
+                  
+                  return res.json({
+                    jsonrpc: '2.0',
+                    result: analyzeResult,
+                    id
+                  });
+                } catch (toolError) {
+                  console.error('[RPC] Error in tools/call for analyze_actions_data:', toolError);
+                  return res.status(500).json({
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32603,
+                      message: toolError instanceof Error ? toolError.message : 'Error processing tool',
+                      data: toolError instanceof Error ? toolError.stack : undefined
+                    },
+                    id
+                  });
+                }
+              } else {
+                return res.status(400).json({
+                  jsonrpc: '2.0',
+                  error: { code: -32601, message: `Tool '${toolName}' not found` },
+                  id
+                });
+              }
+              
             case 'analyze_actions_data':
               console.log('[RPC] Processing analyze_actions_data request');
               if (!params || !Array.isArray(params) || params.length === 0) {
