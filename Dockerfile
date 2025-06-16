@@ -40,6 +40,9 @@ COPY --from=builder /app/start-http-server.sh ./
 # Copy any additional config files if needed
 COPY --chown=mcp-server:nodejs .env* ./
 
+# Make the start script executable
+RUN chmod +x ./start-http-server.sh
+
 # Switch to non-root user
 USER mcp-server
 
@@ -55,9 +58,6 @@ ENV NODE_ENV=production
 
 # Set Cloud Run port environment variable
 ENV PORT=8080
-
-# Make the start script executable
-RUN chmod +x ./start-http-server.sh
 
 # Start the HTTP wrapper for the MCP server
 CMD ["./start-http-server.sh"]
