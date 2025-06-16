@@ -408,6 +408,91 @@ export class ReportingMCPServer {
         });
       }
     });
+
+    // Register JSON-RPC endpoint
+    this.server.post('/rpc', (req, res) => {
+      const handleRpcRequest = async () => {
+        try {
+          const { jsonrpc, method, params, id } = req.body;
+          
+          // Validate JSON-RPC version
+          if (jsonrpc !== '2.0') {
+            return res.status(400).json({
+              jsonrpc: '2.0',
+              error: { code: -32600, message: 'Invalid Request: jsonrpc version must be 2.0' },
+              id
+            });
+          }
+          
+          // Handle different RPC methods
+          switch (method) {
+            case 'test_connection':
+              const testResult = await this.handleTestConnection();
+              return res.json({
+                jsonrpc: '2.0',
+                result: testResult.success ? 'MCP server is working' : testResult.message,
+                id
+              });
+              
+            case 'list_tools':
+              // Return available tools
+              return res.json({
+                jsonrpc: '2.0',
+                result: {
+                  tools: [
+                    { name: 'analyze_actions_data', description: 'Analyze crypto transaction data' },
+                    { name: 'test_connection', description: 'Test connection to MCP server' }
+                  ]
+                },
+                id
+              });
+              
+            case 'analyze_actions_data':
+              if (!params || !Array.isArray(params) || params.length === 0) {
+                return res.status(400).json({
+                  jsonrpc: '2.0',
+                  error: { code: -32602, message: 'Invalid params for analyze_actions_data' },
+                  id
+                });
+              }
+              
+              const requestData = params[0];
+              const analyzeResult = await this.handleAnalyzeData({
+                query: requestData.query,
+                confirmedMappings: requestData.confirmedMappings,
+                previousResponse: requestData.previousResponse
+              });
+              
+              return res.json({
+                jsonrpc: '2.0',
+                result: analyzeResult,
+                id
+              });
+              
+            default:
+              return res.status(400).json({
+                jsonrpc: '2.0',
+                error: { code: -32601, message: `Method not found: ${method}` },
+                id
+              });
+          }
+        } catch (error) {
+          console.error('RPC error:', error);
+          return res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: error instanceof Error ? error.message : 'Internal JSON-RPC error',
+              data: error instanceof Error ? error.stack : undefined
+            },
+            id: req.body.id
+          });
+        }
+      };
+      
+      // Execute the async handler
+      handleRpcRequest();
+    });
   }
 
   public async start(): Promise<void> {
