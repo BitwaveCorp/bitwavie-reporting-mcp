@@ -1,5 +1,5 @@
 import express from 'express';
-import { ReportingMCPServer } from './server';
+import { ReportingMCPServer } from './server.js';
 
 // Create an Express app
 const app = express();
