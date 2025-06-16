@@ -435,6 +435,7 @@ export class ReportingMCPServer {
               });
               
             case 'list_tools':
+            case 'tools/list':
               // Return available tools
               return res.json({
                 jsonrpc: '2.0',
