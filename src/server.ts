@@ -128,6 +128,14 @@ export class ReportingMCPServer {
                   type: 'string',
                   description: 'Natural language query',
                 },
+                previousResponse: {
+                  type: 'object',
+                  description: 'Previous response from the server, used for maintaining context in conversations',
+                },
+                confirmedMappings: {
+                  type: 'object',
+                  description: 'Confirmed column mappings from previous interactions',
+                },
               },
               required: ['query'],
             },
@@ -343,9 +351,9 @@ export class ReportingMCPServer {
               content: [{
                 type: 'text',
                 text: `I couldn't match your input "${query}" to any available column. Please try one of these methods:\n\n` +
-                      `1. Enter just the number of the column (e.g., "2")\n` +
-                      `2. Type "use" followed by the exact column name (e.g., "use shortTermGainLoss")\n` +
-                      `3. Type a complete query with the column name\n\n` +
+                      `A. Enter just the number of the column (e.g., "2")\n` +
+                      `B. Type "use" followed by the exact column name (e.g., "use shortTermGainLoss")\n` +
+                      `C. Type a complete query with the column name\n\n` +
                       `Let's try again with the column selection.`
               }],
               data: previousResponse?.data || {
@@ -464,7 +472,10 @@ export class ReportingMCPServer {
               return {
                 content: [{
                   type: 'text',
-                  text: `The column number ${columnNumber} is out of range. Please enter a number between 1 and ${gainLossColumns.length}, or type "use" followed by the exact column name.`
+                  text: `The column number ${columnNumber} is out of range. Please try one of these methods:\n\n` +
+                        `A. Enter a number between 1 and ${gainLossColumns.length}\n` +
+                        `B. Type "use" followed by the exact column name (e.g., "use shortTermGainLoss")\n` +
+                        `C. Type a complete query with the column name`
                 }],
                 needsConfirmation: true
               };
@@ -474,6 +485,65 @@ export class ReportingMCPServer {
               error: error instanceof Error ? error.message : String(error)
             });
           }
+        }
+        
+        // Special case 3: Check if the query contains a specific column name and a query-like structure
+        // This handles cases like "Sum shortTermGainLoss for all transactions"
+        
+        // First, check specifically for shortTermGainLoss since that's a common use case
+        if (lowerQuery.includes('shorttermgainloss')) {
+          logFlow('DIRECT_QUERY_WITH_COLUMN', 'INFO', 'Detected query with shortTermGainLoss', { query });
+          
+          // Create confirmed mappings for shortTermGainLoss
+          const newConfirmedMappings: Record<string, string> = {};
+          newConfirmedMappings['shortTermGainLoss'] = 'shortTermGainLoss';
+          
+          logFlow('DIRECT_QUERY_WITH_COLUMN', 'INFO', 'Created confirmed mapping for shortTermGainLoss', { 
+            newConfirmedMappings,
+            originalQuery: query
+          });
+          
+          // Process with the original query and the confirmed mappings
+          return await this.handleAnalyzeData({
+            query: query,
+            confirmedMappings: newConfirmedMappings
+          });
+        }
+        
+        try {
+          // Get all available columns to check against
+          const availableColumns = await this.bigQueryClient.getAvailableColumns();
+          
+          // Check if the query contains any of the available column names
+          for (const column of availableColumns) {
+            if (lowerQuery.includes(column.toLowerCase())) {
+              logFlow('DIRECT_QUERY_WITH_COLUMN', 'INFO', 'Detected query with specific column name', { 
+                query,
+                detectedColumn: column
+              });
+              
+              // Create confirmed mappings for this column
+              const newConfirmedMappings: Record<string, string> = {};
+              newConfirmedMappings[column] = column;
+              
+              logFlow('DIRECT_QUERY_WITH_COLUMN', 'INFO', 'Created confirmed mapping from query with column', { 
+                selectedColumn: column,
+                newConfirmedMappings,
+                originalQuery: query
+              });
+              
+              // Process with the original query and the confirmed mappings
+              return await this.handleAnalyzeData({
+                query: query,
+                confirmedMappings: newConfirmedMappings
+              });
+            }
+          }
+        } catch (error) {
+          logFlow('DIRECT_QUERY_WITH_COLUMN', 'ERROR', 'Error processing query with column', { 
+            error: error instanceof Error ? error.message : String(error),
+            query
+          });
         }
         
         // Check if this is a gain/loss query
