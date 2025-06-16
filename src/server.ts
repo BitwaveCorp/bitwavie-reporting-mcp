@@ -455,6 +455,13 @@ export class ReportingMCPServer {
                 id
               };
               console.log('[RPC] Returning tools list:', JSON.stringify(toolsResponse));
+              console.log('[RPC] DEBUG: Tools list structure:', JSON.stringify({
+                resultType: typeof toolsResponse.result,
+                hasTools: !!toolsResponse.result?.tools,
+                toolsType: typeof toolsResponse.result?.tools,
+                isArray: Array.isArray(toolsResponse.result?.tools),
+                toolsLength: toolsResponse.result?.tools?.length || 0
+              }));
               return res.json(toolsResponse);
               
             case 'analyze_actions_data':
