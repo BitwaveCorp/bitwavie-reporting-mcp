@@ -972,6 +972,39 @@ export class ReportingMCPServer {
         content.push({ type: 'text', text: queryExplanation });
       }
       
+      // Log the content structure before sending to frontend
+      logFlow('SERVER', 'INFO', 'Response content structure', {
+        contentLength: content.length,
+        contentTypes: content.map(item => item.type)
+      });
+      
+      // If there are any table items, log their structure and data
+      const tableItems = content.filter(item => item.type === 'table');
+      if (tableItems.length > 0) {
+        // Log the structure of the first table
+        logFlow('SERVER', 'INFO', 'Table data structure', {
+          tableCount: tableItems.length,
+          firstTableStructure: JSON.stringify(tableItems[0])
+        });
+        
+        // Log the actual data in the table
+        const firstTable = tableItems[0];
+        if (firstTable && 
+            typeof firstTable === 'object' && 
+            'table' in firstTable && 
+            firstTable.table && 
+            'headers' in firstTable.table && 
+            'rows' in firstTable.table && 
+            Array.isArray(firstTable.table.headers) && 
+            Array.isArray(firstTable.table.rows)) {
+          logFlow('SERVER', 'INFO', 'Actual table data', {
+            headers: firstTable.table.headers,
+            rows: JSON.stringify(firstTable.table.rows),
+            rowCount: firstTable.table.rows.length
+          });
+        }
+      }
+      
       // Return formatted results
       return {
         content: content,
