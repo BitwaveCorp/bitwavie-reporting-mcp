@@ -698,8 +698,16 @@ export class ReportingMCPServer {
         };
       }
       
-      // Check if it's a confirmation response
-      if (request.previousResponse?.needsConfirmation && request.confirmedMappings) {
+      // Check if it's a confirmation response - more robust detection
+      if (request.confirmedMappings) {
+        // If we have confirmed mappings, treat it as a confirmation response
+        logFlow('SERVER', 'INFO', 'Detected confirmation response with mappings');
+        
+        // If previousResponse is missing or incomplete, try to extract from the query context
+        if (!request.previousResponse?.translationResult && request.query) {
+          logFlow('SERVER', 'INFO', 'Attempting to reconstruct previousResponse from context');
+        }
+        
         return this.handleConfirmationResponse(request);
       }
       
@@ -825,11 +833,43 @@ export class ReportingMCPServer {
       logFlow('SERVER', 'INFO', 'Processing confirmation response');
       
       // Find the session from previousResponse
-      const translationResult = request.previousResponse.translationResult;
+      let translationResult = request.previousResponse?.translationResult;
+      let originalQuery = request.query || '';
+      
+      // If translationResult is not directly available, try to extract it from data or other properties
+      if (!translationResult && request.previousResponse?.data?.translationResult) {
+        translationResult = request.previousResponse.data.translationResult;
+        logFlow('SERVER', 'INFO', 'Found translationResult in previousResponse.data');
+      }
+      
+      // Try to extract original query from previousResponse
+      if (request.previousResponse?.originalQuery) {
+        originalQuery = request.previousResponse.originalQuery;
+        logFlow('SERVER', 'INFO', `Found originalQuery: ${originalQuery}`);
+      } else if (request.previousResponse?.query) {
+        originalQuery = request.previousResponse.query;
+        logFlow('SERVER', 'INFO', `Using query from previousResponse: ${originalQuery}`);
+      }
+      
+      // Last resort: check if the previousResponse itself might contain the necessary fields
+      if (!translationResult && request.previousResponse?.sql) {
+        translationResult = {
+          sql: request.previousResponse.sql,
+          originalQuery: originalQuery
+        };
+        logFlow('SERVER', 'INFO', 'Created translationResult from previousResponse fields');
+      }
+      
       if (!translationResult) {
+        logFlow('SERVER', 'ERROR', 'Invalid confirmation request - cannot find translation result', {
+          query: originalQuery,
+          previousResponse: request.previousResponse ? 'present' : 'missing',
+          confirmedMappings: request.confirmedMappings ? 'present' : 'missing'
+        });
         return {
-          content: [{ type: 'text', text: 'Invalid confirmation request - missing translation result.' }],
-          error: 'Missing translation result'
+          content: [{ type: 'text', text: 'Invalid confirmation request - missing translation result. Please try your query again.' }],
+          error: 'Missing translation result',
+          needsConfirmation: false // Explicitly set to false to prevent confirmation loops
         };
       }
       
