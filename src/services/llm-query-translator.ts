@@ -416,12 +416,24 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     });
     
     // Get table information
-    const tableId = this.schemaManager.getSchema()?.columns[0]?.name 
+    const columnName = this.schemaManager.getSchema()?.columns[0]?.name;
+    const tableId = columnName 
       ? `\`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${process.env.BIGQUERY_DATASET_ID}.${process.env.BIGQUERY_TABLE_ID}\``
       : 'actions'; // Default fallback
     
+    // Validate and ensure we have a non-empty aggregation clause
+    let selectClause = aggregationComponents.aggregationClause;
+    
+    // Final safety check - never allow an empty SELECT clause
+    if (!selectClause || selectClause.trim() === '') {
+      logFlow('LLM_TRANSLATOR', 'INFO', 'Empty SELECT clause detected, using fallback', {
+        originalQuery: query
+      });
+      selectClause = '*';
+    }
+    
     // Create the SQL query
-    let sql = `SELECT ${aggregationComponents.aggregationClause}\nFROM ${tableId}`;
+    let sql = `SELECT ${selectClause}\nFROM ${tableId}`;
     
     // Add WHERE clause if there are filters
     if (filterComponents.sqlClause && filterComponents.sqlClause !== '1=1') {
