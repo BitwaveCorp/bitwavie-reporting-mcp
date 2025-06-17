@@ -910,6 +910,8 @@ export class ReportingMCPServer {
           error: executionResult.error.message,
           sql: this.config.includeSqlInResponses ? sql : '',
           originalQuery: sessionData.query,
+          // Explicitly set needsConfirmation to false for error responses after confirmation
+          needsConfirmation: false,
           // Only include translationResult if it exists
           ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
         };
@@ -939,6 +941,8 @@ export class ReportingMCPServer {
         content: formattedResult.content,
         sql: this.config.includeSqlInResponses ? sql : '',
         originalQuery: sessionData.query,
+        // Explicitly set needsConfirmation to false to indicate this is a result after confirmation
+        needsConfirmation: false,
         // Only include translationResult if it exists
         ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
@@ -950,6 +954,8 @@ export class ReportingMCPServer {
         error: formatError(error),
         sql: this.config.includeSqlInResponses ? sql : '',
         originalQuery: sessionData.query || '',
+        // Explicitly set needsConfirmation to false for error responses
+        needsConfirmation: false,
         // Only include translationResult if it exists
         ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
