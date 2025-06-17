@@ -27,6 +27,11 @@ export interface FormattedResult {
       rows: any[][];
     };
   }>;
+  // Add rawData field for direct JSON access
+  rawData?: {
+    headers: string[];
+    rows: any[];
+  };
   metadata: {
     rowCount: number;
     totalRows: number;
@@ -138,6 +143,12 @@ export class ResultFormatter {
         }
       ],
       
+      // Add raw JSON data for direct use by the frontend
+      rawData: {
+        headers,
+        rows: executionResult.data || []
+      },
+      
       metadata: {
         rowCount: displayRows,
         totalRows,
@@ -192,10 +203,21 @@ export class ResultFormatter {
       }
     }
     
+    // Log the actual query results for debugging
+    const resultPreview = data.map(row => {
+      // Create a simplified version of each row for logging
+      const simplifiedRow: Record<string, any> = {};
+      headers.forEach(header => {
+        simplifiedRow[header] = row[header];
+      });
+      return simplifiedRow;
+    });
+    
     logFlow('RESULT_FORMATTER', 'EXIT', 'Results formatting completed', {
       contentItems: formattedResult.content.length,
       displayedRows: displayRows,
-      totalRows
+      totalRows,
+      resultPreview: JSON.stringify(resultPreview)
     });
     
     return formattedResult;

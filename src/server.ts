@@ -223,6 +223,11 @@ interface ExecutionResult {
 
 interface FormattedResult {
   content: FormattedResultContent[];
+  // Add rawData field for direct JSON access
+  rawData?: {
+    headers: string[];
+    rows: any[];
+  };
   metadata: FormattedResultMetadata;
   summary?: string;
 }
