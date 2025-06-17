@@ -22,15 +22,15 @@ export interface FormattedResult {
   content: Array<{
     type: string;
     text?: string;
-    table?: {
-      headers: string[];
-      rows: any[][];
-    };
+    // Remove table type as we're moving away from this format
   }>;
-  // Add rawData field for direct JSON access
+  // Enhanced rawData field for direct JSON access
   rawData?: {
     headers: string[];
     rows: any[];
+    displayRows: number;   // Number of rows to display in UI (max 100)
+    truncated: boolean;    // Whether the display data was truncated
+    exceedsDownloadLimit: boolean; // Whether the data exceeds 5000 row download limit
   };
   metadata: {
     rowCount: number;
@@ -131,22 +131,21 @@ export class ResultFormatter {
       });
     });
     
-    // Create the formatted result
+    // Create the formatted result with only rawData for tables
     const formattedResult: FormattedResult = {
-      content: [
-        {
-          type: 'table',
-          table: {
-            headers,
-            rows
-          }
-        }
-      ],
+      // Keep content array for text messages, but don't include table data here
+      content: [],
       
-      // Add raw JSON data for direct use by the frontend
+      // Use rawData as the primary data format for tables
       rawData: {
         headers,
-        rows: executionResult.data || []
+        rows: executionResult.data || [],
+        // Limit displayed rows in UI to 100
+        displayRows: Math.min(displayRows, 100),
+        // Indicate if data was truncated
+        truncated: displayRows > 100,
+        // Flag if dataset exceeds download limit
+        exceedsDownloadLimit: totalRows > 5000
       },
       
       metadata: {

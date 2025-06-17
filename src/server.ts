@@ -223,10 +223,13 @@ interface ExecutionResult {
 
 interface FormattedResult {
   content: FormattedResultContent[];
-  // Add rawData field for direct JSON access
+  // Enhanced rawData field for direct JSON access
   rawData?: {
     headers: string[];
     rows: any[];
+    displayRows: number;   // Number of rows to display in UI (max 100)
+    truncated: boolean;    // Whether the display data was truncated
+    exceedsDownloadLimit: boolean; // Whether the data exceeds 5000 row download limit
   };
   metadata: FormattedResultMetadata;
   summary?: string;
@@ -977,35 +980,26 @@ export class ReportingMCPServer {
         content.push({ type: 'text', text: queryExplanation });
       }
       
-      // Log the content structure before sending to frontend
-      console.log('Response content structure:', {
+      // Log the response structure before sending to frontend
+      console.log('Response structure:', {
         contentLength: content.length,
-        contentTypes: content.map(item => item.type)
+        hasRawData: !!formattedResult.rawData
       });
       
-      // If there are any table items, log their structure and data
-      const tableItems = content.filter(item => item.type === 'table');
-      if (tableItems.length > 0) {
-        // Log the structure of the first table
-        console.log('Table data structure:', {
-          tableCount: tableItems.length,
-          firstTableStructure: tableItems[0]
+      // Log the rawData if available
+      if (formattedResult.rawData) {
+        console.log('Raw data structure:', {
+          headers: formattedResult.rawData.headers,
+          totalRows: formattedResult.rawData.rows.length,
+          displayRows: formattedResult.rawData.displayRows,
+          truncated: formattedResult.rawData.truncated,
+          exceedsDownloadLimit: formattedResult.rawData.exceedsDownloadLimit
         });
         
-        // Log the actual data in the table
-        const firstTable = tableItems[0];
-        if (firstTable && 
-            typeof firstTable === 'object' && 
-            'table' in firstTable && 
-            firstTable.table && 
-            'headers' in firstTable.table && 
-            'rows' in firstTable.table && 
-            Array.isArray(firstTable.table.headers) && 
-            Array.isArray(firstTable.table.rows)) {
-          console.log('Actual table data:', {
-            headers: firstTable.table.headers,
-            rows: firstTable.table.rows,
-            rowCount: firstTable.table.rows.length
+        // Log a sample of the data (first 2 rows)
+        if (formattedResult.rawData.rows.length > 0) {
+          console.log('Data sample:', {
+            sampleRows: formattedResult.rawData.rows.slice(0, 2)
           });
         }
       }
