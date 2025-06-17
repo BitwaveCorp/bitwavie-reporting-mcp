@@ -36,6 +36,10 @@ COPY --from=builder /app/dist ./dist
 # Copy HTTP server files
 COPY --from=builder /app/http-server.js ./
 COPY --from=builder /app/start-http-server.sh ./
+COPY --from=builder /app/test-rpc.js ./
+
+# Print file contents for debugging
+RUN ls -la && echo "Content of start-http-server.sh:" && cat start-http-server.sh
 
 # Copy any additional config files if needed
 COPY --chown=mcp-server:nodejs .env* ./
