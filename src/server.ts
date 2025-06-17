@@ -973,7 +973,7 @@ export class ReportingMCPServer {
       }
       
       // Log the content structure before sending to frontend
-      logFlow('SERVER', 'INFO', 'Response content structure', {
+      console.log('Response content structure:', {
         contentLength: content.length,
         contentTypes: content.map(item => item.type)
       });
@@ -982,9 +982,9 @@ export class ReportingMCPServer {
       const tableItems = content.filter(item => item.type === 'table');
       if (tableItems.length > 0) {
         // Log the structure of the first table
-        logFlow('SERVER', 'INFO', 'Table data structure', {
+        console.log('Table data structure:', {
           tableCount: tableItems.length,
-          firstTableStructure: JSON.stringify(tableItems[0])
+          firstTableStructure: tableItems[0]
         });
         
         // Log the actual data in the table
@@ -997,9 +997,9 @@ export class ReportingMCPServer {
             'rows' in firstTable.table && 
             Array.isArray(firstTable.table.headers) && 
             Array.isArray(firstTable.table.rows)) {
-          logFlow('SERVER', 'INFO', 'Actual table data', {
+          console.log('Actual table data:', {
             headers: firstTable.table.headers,
-            rows: JSON.stringify(firstTable.table.rows),
+            rows: firstTable.table.rows,
             rowCount: firstTable.table.rows.length
           });
         }
