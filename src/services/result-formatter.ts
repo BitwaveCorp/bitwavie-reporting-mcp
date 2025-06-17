@@ -137,6 +137,7 @@ export class ResultFormatter {
           }
         }
       ],
+      
       metadata: {
         rowCount: displayRows,
         totalRows,
