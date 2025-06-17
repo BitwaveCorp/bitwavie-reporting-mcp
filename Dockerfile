@@ -37,18 +37,23 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/http-server.js ./
 COPY --from=builder /app/start-http-server.sh ./
 COPY --from=builder /app/test-rpc.js ./
+COPY --from=builder /app/simple-http-server.js ./
+COPY --from=builder /app/start-simple-server.sh ./
 
 # Print file contents for debugging
-RUN ls -la && echo "Content of start-http-server.sh:" && cat start-http-server.sh
+RUN ls -la && echo "Content of start-simple-server.sh:" && cat start-simple-server.sh
 
 # Copy any additional config files if needed
 COPY --chown=mcp-server:nodejs .env* ./
 
-# Make the start script executable
-RUN chmod +x ./start-http-server.sh
+# Make the start scripts executable
+RUN chmod +x ./start-http-server.sh ./start-simple-server.sh
 
 # Switch to non-root user
 USER mcp-server
+
+# Start the simple HTTP server for testing
+CMD ["./start-simple-server.sh"]
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
@@ -62,6 +67,3 @@ ENV NODE_ENV=production
 
 # Set Cloud Run port environment variable
 ENV PORT=8080
-
-# Start the HTTP wrapper for the MCP server
-CMD ["./start-http-server.sh"]
