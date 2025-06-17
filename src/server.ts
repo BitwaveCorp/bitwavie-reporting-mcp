@@ -192,6 +192,7 @@ interface TranslationResult {
   alternatives?: Array<{ sql: string; description: string }>;
   alternativeInterpretations: string[] | undefined;
   error?: string;
+  confirmedMappings?: Record<string, string>;
 }
 
 // Import the ExecutionResult type from query-executor.ts
@@ -255,7 +256,7 @@ interface AnalyzeDataResponse {
   sql?: string;
   error?: string;
   originalQuery?: string;
-  translationResult?: any;
+  translationResult?: TranslationResult;
 }
 
 interface TestConnectionResponse {
@@ -290,10 +291,12 @@ export class ReportingMCPServer {
       datasetId: config.datasetId,
       tableId: config.tableId,
       anthropicApiKey: config.anthropicApiKey || '',
-      useEnhancedNLQ: config.useEnhancedNLQ !== undefined ? config.useEnhancedNLQ : false,
+      useEnhancedNLQ: true, // Always use enhanced NLQ flow
       includeSqlInResponses: config.includeSqlInResponses !== undefined ? config.includeSqlInResponses : false,
       schemaRefreshIntervalMs: config.schemaRefreshIntervalMs || 3600000 // Default: 1 hour
     };
+    
+    logFlow('SERVER', 'INFO', 'Enhanced NLQ flow is enforced, legacy flow is disabled');
 
     // Initialize Express server
     this.server = express();
@@ -612,13 +615,12 @@ export class ReportingMCPServer {
       await this.schemaManager.refreshSchema();
       logFlow('SERVER', 'INFO', 'Schema refreshed successfully');
 
-      // Start HTTP server
-      this.httpServer = this.server.listen(this.config.port, () => {
-        logFlow('SERVER', 'INFO', `Server started on port ${this.config.port}`);
-      });
-      
-      // Start session cleanup
-      if (this.cleanupInterval === null) {
+      if (!this.httpServer) {
+        this.httpServer = this.server.listen(this.config.port, () => {
+          logFlow('SERVER', 'INFO', `Server started on port ${this.config.port}`);
+        });
+        
+        // Start session cleanup
         this.startSessionCleanup();
       }
     } catch (error) {
@@ -714,24 +716,18 @@ export class ReportingMCPServer {
       this.sessions.set(sessionId, sessionData);
       logFlow('SERVER', 'INFO', `New session created: ${sessionId} for query: ${query}`);
       
-      // Route to enhanced or legacy flow based on config
-      if (this.config.useEnhancedNLQ && this.llmQueryTranslator) {
+      // Always use enhanced NLQ flow
+      if (this.llmQueryTranslator) {
         return this.processEnhancedNLQ(sessionId, query);
       } else {
-        return this.processLegacyNLQ(query);
+        // Only if LLM translator is not available, throw an error
+        throw new Error('Enhanced NLQ flow is required but LLM translator is not initialized');
       }
     } catch (error: any) {
       logFlow('SERVER', 'ERROR', 'Error in handleAnalyzeData:', error);
       
-      // Provide fallback to legacy processing when enhanced flow fails
-      if (this.config.useEnhancedNLQ && request.query) {
-        logFlow('SERVER', 'WARN', 'Attempting fallback to legacy processing');
-        try {
-          return this.processLegacyNLQ(request.query);
-        } catch (fallbackError: any) {
-          logFlow('SERVER', 'ERROR', 'Fallback also failed:', fallbackError);
-        }
-      }
+      // No fallback to legacy processing - enhanced flow is required
+      logFlow('SERVER', 'ERROR', 'Enhanced NLQ processing failed and legacy flow is disabled');
       
       // Return user-friendly error messages
       return {
@@ -764,152 +760,64 @@ export class ReportingMCPServer {
       
       // Check if translation failed or has errors
       if (!translationResult) {
-        logFlow('SERVER', 'WARN', 'Translation failed, falling back to legacy');
-        return this.processLegacyNLQ(query);
-      }
-      
-      // Check confidence threshold
-      if (translationResult.confidence < 0.7) {
-        // Check if confirmation formatter is initialized
-        if (!this.queryConfirmationFormatter) {
-          throw new Error('Query confirmation formatter not initialized');
-        }
-        
-        // Request confirmation if needed
-        const confirmationResponse = this.queryConfirmationFormatter.formatConfirmation(translationResult);
-        sessionData.confirmationResponse = confirmationResponse;
-        this.sessions.set(sessionId, sessionData);
-        
+        logFlow('SERVER', 'ERROR', 'Enhanced NLQ translation failed');
+        // No fallback to legacy NLQ - we only use enhanced NLQ flow
         return {
-          content: confirmationResponse.content,
-          needsConfirmation: true,
-          sql: this.config.includeSqlInResponses ? translationResult.sql : '',
-          originalQuery: sessionData.query
-        };
-      }
-      
-      // If confidence is high, execute directly
-      return this.executeAndFormatQuery(sessionId, translationResult.sql);
-    } catch (error) {
-      logFlow('SERVER', 'ERROR', `Enhanced NLQ processing failed for session ${sessionId}:`, error);
-      // Fallback to legacy processing
-      return this.processLegacyNLQ(query);
-    }
-  }
-
-  private async processLegacyNLQ(query: string): Promise<AnalyzeDataResponse> {
-    try {
-      logFlow('SERVER', 'INFO', `Processing legacy NLQ: ${query}`);
-      
-      if (!this.queryParser) {
-        throw new Error('QueryParser not initialized');
-      }
-      
-      // Parse using legacy QueryParser
-      const parsedQuery = this.queryParser.parseQuery(query);
-      
-      if (!parsedQuery) {
-        return {
-          content: [{ type: 'text', text: `Unable to parse query` }],
-          error: 'Query parsing failed',
-          sql: '',
+          content: [{ type: 'text', text: 'Failed to translate your query. Please try rephrasing it.' }],
+          error: 'Translation failed',
+          needsConfirmation: false,
           originalQuery: query
         };
       }
       
-      if (!this.bigQueryClient) {
-        throw new Error('BigQueryClient not initialized');
+      // Always require confirmation regardless of confidence level
+      logFlow('SERVER', 'INFO', `Forcing confirmation for query with confidence: ${translationResult.confidence}`);
+      
+      // Check if confirmation formatter is initialized
+      if (!this.queryConfirmationFormatter) {
+        throw new Error('Query confirmation formatter not initialized');
       }
       
-      // Execute SQL using BigQueryClient
-      // Create parameters object - no longer adding automatic runId for NLQ queries
-      // as it can cause problems with filtering data unnecessarily
-      const parameters: ReportParameters = {
-        // No runId parameter for NLQ queries
-      };
-      const result = await this.bigQueryClient.executeAnalyticalQuery(parsedQuery, parameters);
-      
-      // Type assertion for QueryResult to access rows and columns
-      interface QueryResultWithData {
-        rows?: any[];
-        columns?: string[];
-        metadata?: {
-          execution_time_ms: number;
-          rows_processed: number;
-          cached: boolean;
-          columns_used: string[];
-          generatedSql?: string;
-        };
-        generatedSql?: string;
-      }
-      
-      // Cast result to the expected structure
-      const typedResult = result as unknown as QueryResultWithData;
-      const rows = Array.isArray(typedResult.rows) ? typedResult.rows : [];
-      const columns = Array.isArray(typedResult.columns) ? typedResult.columns : [];
-      
-      // Format results in compatible format
-      const formattedResult: FormattedResult = {
-        content: [
-          {
-            type: 'text',
-            text: `Query executed successfully. Found ${rows.length} results.`
-          },
-          {
-            type: 'table',
-            table: {
-              headers: columns,
-              rows: rows
-            }
-          }
-        ],
-        metadata: {
-          executionTimeMs: result.metadata?.execution_time_ms || 0,
-          bytesProcessed: result.metadata?.rows_processed,
-          cacheHit: result.metadata?.cached || false,
-          rowCount: rows.length,
-          totalRows: rows.length
-        }
-      };
-      
-      // For legacy parser, we need to extract SQL if available
-      let sqlToInclude = '';
-      if (this.config.includeSqlInResponses) {
-        // Try to get SQL from metadata or any other available source
-        if (parsedQuery && parsedQuery.metadata && typeof parsedQuery.metadata === 'object') {
-          // Check if there's a SQL property in metadata
-          const metadata = parsedQuery.metadata as Record<string, any>;
-          // Use type assertion to access potential generatedSql property
-          const extendedMetadata = metadata as { generatedSql?: string; sql?: string };
-          const extendedParsedQuery = parsedQuery as unknown as { generatedSql?: string };
-          
-          if (extendedMetadata.generatedSql) {
-            sqlToInclude = extendedMetadata.generatedSql;
-          } else if (extendedMetadata.sql) {
-            sqlToInclude = extendedMetadata.sql;
-          } else if (extendedParsedQuery.generatedSql) {
-            sqlToInclude = extendedParsedQuery.generatedSql;
-          }
-        }
-      }
+      // Always request confirmation
+      const confirmationResponse = this.queryConfirmationFormatter.formatConfirmation(translationResult);
+      sessionData.confirmationResponse = confirmationResponse;
+      this.sessions.set(sessionId, sessionData);
       
       return {
-        content: formattedResult.content,
-        sql: sqlToInclude,
-        originalQuery: query
+        content: confirmationResponse.content,
+        needsConfirmation: true, // Always true to enforce confirmation
+        sql: this.config.includeSqlInResponses ? translationResult.sql : '',
+        originalQuery: sessionData.query,
+        translationResult: translationResult // Include the full translation result for frontend
       };
+      
+      // No direct execution without confirmation
     } catch (error) {
-      logFlow('SERVER', 'ERROR', 'Legacy NLQ processing failed:', error);
-      // Handle error case
-      let sqlToInclude = '';
-      
+      logFlow('SERVER', 'ERROR', `Enhanced NLQ processing failed for session ${sessionId}:`, error);
+      // No fallback to legacy NLQ - we only use enhanced NLQ flow
       return {
-        content: [{ type: 'text', text: `Error executing query: ${formatError(error)}` }],
+        content: [{ type: 'text', text: `Error processing your query: ${formatError(error)}` }],
         error: formatError(error),
-        sql: sqlToInclude,
+        needsConfirmation: false,
         originalQuery: query
       };
     }
+  }
+
+  private async processLegacyNLQ(query: string): Promise<AnalyzeDataResponse> {
+    // Legacy NLQ flow is completely disabled
+    logFlow('SERVER', 'WARN', `Attempt to use disabled legacy NLQ flow: ${query}`);
+    
+    return {
+      content: [{ 
+        type: 'text', 
+        text: `Legacy NLQ flow is disabled. The system is configured to use enhanced NLQ flow only.` 
+      }],
+      error: 'Legacy NLQ flow is disabled',
+      sql: '',
+      originalQuery: query,
+      needsConfirmation: false
+    };
   }
   
   private async handleConfirmationResponse(request: AnalyzeDataRequest): Promise<AnalyzeDataResponse> {
@@ -925,14 +833,24 @@ export class ReportingMCPServer {
         };
       }
       
+      // Log the confirmedMappings for debugging
+      logFlow('SERVER', 'INFO', `Received confirmedMappings: ${JSON.stringify(request.confirmedMappings || {})}`);
+      
       // Process confirmed mappings
       let sqlToExecute = translationResult.sql;
       
       if (request.confirmedMappings) {
         // Handle confirmed queries, alternative selections, and corrections
         for (const [placeholder, value] of Object.entries(request.confirmedMappings)) {
-          sqlToExecute = sqlToExecute.replace(placeholder, value);
+          if (value) { // Only replace if value is not null or empty
+            logFlow('SERVER', 'INFO', `Replacing ${placeholder} with ${value} in SQL`);
+            sqlToExecute = sqlToExecute.replace(placeholder, value);
+          } else {
+            logFlow('SERVER', 'WARN', `Empty value for mapping ${placeholder}, skipping replacement`);
+          }
         }
+      } else {
+        logFlow('SERVER', 'WARN', 'No confirmedMappings provided in confirmation response');
       }
       
       // Generate new session for confirmed query
@@ -941,7 +859,8 @@ export class ReportingMCPServer {
         query: translationResult.originalQuery,
         translationResult: {
           ...translationResult,
-          sql: sqlToExecute
+          sql: sqlToExecute,
+          confirmedMappings: request.confirmedMappings || {} // Store the confirmed mappings
         },
         timestamp: Date.now()
       };
@@ -990,7 +909,9 @@ export class ReportingMCPServer {
           content: [{ type: 'text', text: `Query execution failed: ${executionResult.error.message}` }],
           error: executionResult.error.message,
           sql: this.config.includeSqlInResponses ? sql : '',
-          originalQuery: sessionData.query
+          originalQuery: sessionData.query,
+          // Only include translationResult if it exists
+          ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
         };
       }
       
@@ -1017,7 +938,9 @@ export class ReportingMCPServer {
       return {
         content: formattedResult.content,
         sql: this.config.includeSqlInResponses ? sql : '',
-        originalQuery: sessionData.query
+        originalQuery: sessionData.query,
+        // Only include translationResult if it exists
+        ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
     } catch (error) {
       logFlow('SERVER', 'ERROR', 'Error executing query', error);
@@ -1026,7 +949,9 @@ export class ReportingMCPServer {
         content: [{ type: 'text', text: `Error executing query: ${formatError(error)}` }],
         error: formatError(error),
         sql: this.config.includeSqlInResponses ? sql : '',
-        originalQuery: sessionData.query || ''
+        originalQuery: sessionData.query || '',
+        // Only include translationResult if it exists
+        ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
     }
   }
