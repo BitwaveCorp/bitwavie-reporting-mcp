@@ -746,61 +746,35 @@ export class ReportingMCPServer {
   }
 
   private async processEnhancedNLQ(sessionId: string, query: string): Promise<AnalyzeDataResponse> {
+    console.log(`[processEnhancedNLQ] Processing enhanced NLQ for session ${sessionId}, query: ${query}`);
+    
     try {
-      logFlow('SERVER', 'INFO', `Processing enhanced NLQ for session: ${sessionId}`);
-      
-      // Check if LLM translator is initialized
+      // Translate the query using LLM
       if (!this.llmQueryTranslator) {
-        throw new Error('LLM query translator not initialized');
+        throw new Error('LLMQueryTranslator not initialized');
       }
       
-      // Translate query using LLM
       const translationResult = await this.llmQueryTranslator.translateQuery(query);
+      console.log(`[processEnhancedNLQ] Translation result:`, JSON.stringify(translationResult, null, 2));
       
-      // Update session with translation result
+      // Store the translation result in the session data
       const sessionData = this.sessions.get(sessionId);
-      if (!sessionData) {
-        throw new Error(`Session ${sessionId} not found`);
+      if (sessionData) {
+        sessionData.translationResult = translationResult;
+        sessionData.query = query;
       }
       
-      sessionData.translationResult = translationResult;
-      this.sessions.set(sessionId, sessionData);
+      // Create understanding message based on the interpreted query
+      const understandingMessage = `I understand your query as: "${translationResult.interpretedQuery}"`;
       
-      // Check if translation failed or has errors
-      if (!translationResult) {
-        logFlow('SERVER', 'ERROR', 'Enhanced NLQ translation failed');
-        // No fallback to legacy NLQ - we only use enhanced NLQ flow
-        return {
-          content: [{ type: 'text', text: 'Failed to translate your query. Please try rephrasing it.' }],
-          error: 'Translation failed',
-          needsConfirmation: false,
-          originalQuery: query
-        };
-      }
+      // Add explanation of how the query was generated
+      const queryExplanation = `\n\n**How this query was generated:**\n\n1. Your natural language request was processed by an AI language model\n2. The AI interpreted your request as: "${translationResult.interpretedQuery}"\n3. The AI translated your request into SQL: \`${translationResult.sql}\`\n4. The query was executed against the database\n5. Results were formatted for display`;
       
-      // Always require confirmation regardless of confidence level
-      logFlow('SERVER', 'INFO', `Forcing confirmation for query with confidence: ${translationResult.confidence}`);
+      // Auto-execute the query with the understanding message and explanation
+      return this.executeAndFormatQuery(sessionId, translationResult.sql, understandingMessage, queryExplanation);
       
-      // Check if confirmation formatter is initialized
-      if (!this.queryConfirmationFormatter) {
-        throw new Error('Query confirmation formatter not initialized');
-      }
-      
-      // Always request confirmation
-      const confirmationResponse = this.queryConfirmationFormatter.formatConfirmation(translationResult);
-      sessionData.confirmationResponse = confirmationResponse;
-      this.sessions.set(sessionId, sessionData);
-      
-      return {
-        content: confirmationResponse.content,
-        needsConfirmation: true, // Always true to enforce confirmation
-        sql: this.config.includeSqlInResponses ? translationResult.sql : '',
-        originalQuery: sessionData.query,
-        translationResult: translationResult // Include the full translation result for frontend
-      };
-      
-      // No direct execution without confirmation
     } catch (error) {
+      console.error(`[processEnhancedNLQ] Error processing enhanced NLQ:`, error);
       logFlow('SERVER', 'ERROR', `Enhanced NLQ processing failed for session ${sessionId}:`, error);
       // No fallback to legacy NLQ - we only use enhanced NLQ flow
       return {
@@ -918,7 +892,7 @@ export class ReportingMCPServer {
     }
   }
 
-  private async executeAndFormatQuery(sessionId: string, sql: string): Promise<AnalyzeDataResponse> {
+  private async executeAndFormatQuery(sessionId: string, sql: string, understandingMessage?: string, queryExplanation?: string): Promise<AnalyzeDataResponse> {
     const sessionData = this.sessions.get(sessionId);
     
     if (!sessionData) {
@@ -972,17 +946,38 @@ export class ReportingMCPServer {
         columns: typedResult.columns || []
       };
       
-      const formattedResult = this.resultFormatter.formatResults(
+      const formattedResult = await this.resultFormatter.formatResults(
         formatterInput,
         sessionData.translationResult
       );
       
+      // If we have an understanding message and/or query explanation, prepend them to the content
+      let content = formattedResult.content;
+      
+      // Start with empty content array if none exists
+      if (!content) {
+        content = [];
+      }
+      
+      // Add understanding message if provided
+      if (understandingMessage) {
+        content = [
+          { type: 'text', text: understandingMessage },
+          ...content
+        ];
+      }
+      
+      // Add query explanation at the end if provided
+      if (queryExplanation) {
+        content.push({ type: 'text', text: queryExplanation });
+      }
+      
+      // Return formatted results
       return {
-        content: formattedResult.content,
+        content: content,
         sql: this.config.includeSqlInResponses ? sql : '',
         originalQuery: sessionData.query,
-        // Explicitly set needsConfirmation to false to indicate this is a result after confirmation
-        needsConfirmation: false,
+        needsConfirmation: false, // Explicitly set to false since we're auto-executing
         // Only include translationResult if it exists
         ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
