@@ -432,8 +432,25 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
       selectClause = '*';
     }
     
-    // Create the SQL query
+    // Create the SQL query with enhanced safety checks
+    // Double-check that selectClause is not empty before using it
+    if (!selectClause || selectClause.trim() === '') {
+      logFlow('LLM_TRANSLATOR', 'INFO', 'Empty SELECT clause detected after initial check, using * as fallback', {
+        originalQuery: query
+      });
+      selectClause = '*';
+    }
+    
     let sql = `SELECT ${selectClause}\nFROM ${tableId}`;
+    
+    // Final validation - if somehow we still have an empty SELECT clause, log and fix it
+    if (sql.match(/SELECT\s+FROM/i)) {
+      logFlow('LLM_TRANSLATOR', 'ERROR', 'Critical: Empty SELECT clause still detected in final SQL', {
+        originalQuery: query,
+        generatedSql: sql
+      });
+      sql = sql.replace(/SELECT\s+FROM/i, 'SELECT * FROM');
+    }
     
     // Add WHERE clause if there are filters
     if (filterComponents.sqlClause && filterComponents.sqlClause !== '1=1') {
