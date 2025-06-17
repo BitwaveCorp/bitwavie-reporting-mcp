@@ -503,7 +503,7 @@ export interface DataSource {
 }
 
 export interface ReportParameters {
-  runId: string;
+  runId?: string; // Made optional to support NLQ queries without filtering by runId
   orgId?: string;
   startDate?: string;
   endDate?: string;

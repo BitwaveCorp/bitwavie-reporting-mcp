@@ -822,10 +822,10 @@ export class ReportingMCPServer {
       }
       
       // Execute SQL using BigQueryClient
-      // Create parameters object with required fields
+      // Create parameters object - no longer adding automatic runId for NLQ queries
+      // as it can cause problems with filtering data unnecessarily
       const parameters: ReportParameters = {
-        runId: `legacy-nlq-${Date.now()}`
-        // Optional fields are not explicitly set
+        // No runId parameter for NLQ queries
       };
       const result = await this.bigQueryClient.executeAnalyticalQuery(parsedQuery, parameters);
       
