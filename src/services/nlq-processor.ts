@@ -163,6 +163,33 @@ export class NLQProcessor {
       
       // If translation requires confirmation, format and return confirmation
       if (translationResult.requiresConfirmation) {
+        // Check if confidence is very low (below 0.3) - use uncertainty response
+        if (translationResult.confidence < 0.3) {
+          logFlow('NLQ_PROCESSOR', 'INFO', 'Very low confidence, using uncertainty response', {
+            confidence: translationResult.confidence
+          });
+          
+          // Get available columns from schema manager for the uncertainty response
+          const schema = await this.schemaManager.getSchema();
+          const availableColumns = schema?.columns?.map(col => ({
+            name: col.name,
+            type: col.type,
+            description: col.description
+          })) || [];
+          
+          const uncertaintyResponse = this.confirmationFormatter.formatUncertaintyResponse(
+            query,
+            availableColumns
+          );
+          
+          logFlow('NLQ_PROCESSOR', 'EXIT', 'Query requires clarification due to uncertainty', {
+            needsConfirmation: true
+          });
+          
+          return uncertaintyResponse;
+        }
+        
+        // Normal confirmation for moderate to high confidence
         const confirmationResponse = this.confirmationFormatter.formatConfirmation(translationResult);
         
         logFlow('NLQ_PROCESSOR', 'EXIT', 'Query requires confirmation', {

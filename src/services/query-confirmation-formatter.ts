@@ -50,8 +50,8 @@ export class QueryConfirmationFormatter {
       confidence: translationResult.confidence
     });
     
-    // Start with the interpreted query
-    let confirmationText = `${translationResult.interpretedQuery}\n\n`;
+    // Start with the standard confirmation format from the requirements
+    let confirmationText = `I understand you want to:\n\n`;
     
     // Add filter operations (population definition)
     if (translationResult.components.filterOperations.description) {
@@ -116,11 +116,11 @@ export class QueryConfirmationFormatter {
       confirmationText += '\n';
     }
     
-    // Add confirmation prompt
-    confirmationText += `Is this interpretation correct? You can:\n`;
-    confirmationText += `1. Confirm by saying "yes" or "correct"\n`;
-    confirmationText += `2. Modify specific parts (e.g., "change the date range to last 30 days")\n`;
-    confirmationText += `3. Provide a completely new query\n`;
+    // Add confirmation prompt exactly as specified in the requirements
+    confirmationText += `Is this correct?\n\n`;
+    confirmationText += `If not, please specify:\n`;
+    confirmationText += `1. Which criteria to adjust for identifying data\n`;
+    confirmationText += `2. Which calculations/results to change\n`;
     
     logFlow('CONFIRMATION_FORMATTER', 'EXIT', 'Confirmation formatting completed', {
       textLength: confirmationText.length
@@ -130,6 +130,76 @@ export class QueryConfirmationFormatter {
       content: [{
         type: 'text',
         text: confirmationText
+      }],
+      needsConfirmation: true
+    };
+  }
+  
+  /**
+   * Format a clarification request when the system is completely uncertain about the user's intent
+   * @param originalQuery The original query
+   * @param availableColumns Available columns in the schema with their data types
+   * @returns Formatted clarification response
+   */
+  public formatUncertaintyResponse(
+    originalQuery: string,
+    availableColumns: Array<{name: string, type: string, description?: string}>
+  ): ConfirmationResponse {
+    logFlow('CONFIRMATION_FORMATTER', 'ENTRY', 'Formatting uncertainty response', {
+      originalQuery
+    });
+    
+    // Format according to the requirements for "When Completely Uncertain"
+    let clarificationText = `I need clarification on your request. Please help me understand:\n\n`;
+    
+    // Ask which columns to filter on
+    clarificationText += `**Which columns do you want to filter on?**\n`;
+    
+    // Group columns by type for better organization
+    const columnsByType: {[key: string]: Array<{name: string, type: string, description?: string}>} = {};
+    availableColumns.forEach(col => {
+      // Ensure col.type exists and use it as a string key
+      const typeKey = col.type || 'unknown';
+      if (!columnsByType[typeKey]) {
+        columnsByType[typeKey] = [];
+      }
+      columnsByType[typeKey].push(col);
+    });
+    
+    // Present all available columns with data types
+    Object.entries(columnsByType).forEach(([type, columns]) => {
+      clarificationText += `${type} columns:\n`;
+      columns.forEach(col => {
+        const description = col.description ? ` - ${col.description}` : '';
+        clarificationText += `- ${col.name} (${col.type})${description}\n`;
+      });
+      clarificationText += '\n';
+    });
+    
+    // Ask which columns to aggregate/calculate on
+    clarificationText += `**Which columns do you want to aggregate/calculate on?**\n`;
+    
+    // Present numeric columns with suggested aggregation types
+    const numericColumns = availableColumns.filter(col => 
+      ['INTEGER', 'FLOAT', 'NUMERIC', 'BIGNUMERIC'].includes(col.type.toUpperCase()));
+    
+    if (numericColumns.length > 0) {
+      clarificationText += `Numeric columns suitable for aggregation:\n`;
+      numericColumns.forEach(col => {
+        clarificationText += `- ${col.name}: SUM, AVG, MIN, MAX, COUNT\n`;
+      });
+    } else {
+      clarificationText += `No numeric columns found for aggregation. You can use COUNT on any column.\n`;
+    }
+    
+    logFlow('CONFIRMATION_FORMATTER', 'EXIT', 'Uncertainty response formatting completed', {
+      textLength: clarificationText.length
+    });
+    
+    return {
+      content: [{
+        type: 'text',
+        text: clarificationText
       }],
       needsConfirmation: true
     };

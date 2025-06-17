@@ -125,7 +125,9 @@ export class LLMQueryTranslator {
       const sqlResult = await this.generateSQL(query, filterComponents, aggregationComponents);
       
       // Determine if confirmation is required based on confidence
-      const requiresConfirmation = sqlResult.confidence < 0.8;
+      // Using a very high threshold (0.99) to ensure most queries require confirmation
+      // This can be gradually reduced over time as the system improves
+      const requiresConfirmation = sqlResult.confidence < 0.99;
       
       // Construct the final translation result
       const result: TranslationResult = {
