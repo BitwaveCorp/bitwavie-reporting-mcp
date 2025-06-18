@@ -4,7 +4,7 @@ import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { ReportParameters } from './types/actions-report';
 
-// Import modular services
+// Import service modules 
 import { SchemaManager } from './services/schema-manager.js';
 import { LLMQueryTranslator } from './services/llm-query-translator.js';
 import { QueryConfirmationFormatter } from './services/query-confirmation-formatter.js';

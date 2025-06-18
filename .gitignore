@@ -45,3 +45,6 @@ jspm_packages/
 # System Files
 .DS_Store
 Thumbs.db
+
+# Ignore compiled JavaScript files in src directory
+src/*.js
