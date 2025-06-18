@@ -1005,6 +1005,9 @@ export class ReportingMCPServer {
       limit?: { description: string; sqlClause: string };
     }>
   ): Promise<AnalyzeDataResponse> {
+    console.log('DATA CHECKER [BACKEND] - Starting executeAndFormatQuery');
+    console.log('DATA CHECKER [BACKEND] - SQL:', sql.substring(0, 500) + (sql.length > 500 ? '...' : ''));
+    console.log('DATA CHECKER [BACKEND] - Processing steps:', JSON.stringify(processingSteps, null, 2));
     // Get the session data
     const sessionData = this.sessions.get(sessionId);
     if (!sessionData) {
