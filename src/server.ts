@@ -231,6 +231,16 @@ interface FormattedResult {
     truncated: boolean;    // Whether the display data was truncated
     exceedsDownloadLimit: boolean; // Whether the data exceeds 5000 row download limit
   };
+  // Processing steps to show how the query was interpreted and executed
+  processingSteps?: Array<{
+    type: string;
+    message?: string;
+    filters?: { description: string; sqlClause: string };
+    aggregations?: { description: string; sqlClause: string };
+    groupBy?: { description: string; sqlClause: string };
+    orderBy?: { description: string; sqlClause: string };
+    limit?: { description: string; sqlClause: string };
+  }>;
   metadata: FormattedResultMetadata;
   summary?: string;
 }
@@ -259,6 +269,24 @@ interface AnalyzeDataResponse {
       headers: string[];
       rows: any[][];
     };
+  }>;
+  // Enhanced rawData field for direct JSON access
+  rawData?: {
+    headers: string[];
+    rows: any[];
+    displayRows: number;   // Number of rows to display in UI (max 100)
+    truncated: boolean;    // Whether the display data was truncated
+    exceedsDownloadLimit: boolean; // Whether the data exceeds 5000 row download limit
+  };
+  // Processing steps to show how the query was interpreted and executed
+  processingSteps?: Array<{
+    type: string;
+    message?: string;
+    filters?: { description: string; sqlClause: string };
+    aggregations?: { description: string; sqlClause: string };
+    groupBy?: { description: string; sqlClause: string };
+    orderBy?: { description: string; sqlClause: string };
+    limit?: { description: string; sqlClause: string };
   }>;
   needsConfirmation?: boolean;
   sql?: string;
@@ -776,10 +804,36 @@ export class ReportingMCPServer {
       const understandingMessage = `I understand your query as: "${translationResult.interpretedQuery}"`;
       
       // Add explanation of how the query was generated
-      const queryExplanation = `\n\n**How this query was generated:**\n\n1. Your natural language request was processed by an AI language model\n2. The AI interpreted your request as: "${translationResult.interpretedQuery}"\n3. The AI translated your request into SQL: \`${translationResult.sql}\`\n4. The query was executed against the database\n5. Results were formatted for display`;
+      const queryExplanation = `\n\n**Wavie took the following steps:**\n\n1. Wavie interpreted your request as: "${translationResult.interpretedQuery}"\n2. Your request was translated into SQL: \`${translationResult.sql}\`\n3. The query was executed against the database\n4. Results were formatted for display`;
       
-      // Auto-execute the query with the understanding message and explanation
-      return this.executeAndFormatQuery(sessionId, translationResult.sql, understandingMessage, queryExplanation);
+      // Create processing steps for frontend display
+      const processingSteps = [
+        {
+          type: 'query_interpretation',
+          message: `I understand your query as: "${translationResult.interpretedQuery}"`
+        },
+        {
+          type: 'sql_generation',
+          message: translationResult.sql
+        },
+        {
+          type: 'components',
+          filters: translationResult.components.filterOperations,
+          aggregations: translationResult.components.aggregationOperations,
+          groupBy: translationResult.components.groupByOperations,
+          orderBy: translationResult.components.orderByOperations,
+          limit: translationResult.components.limitOperations
+        }
+      ];
+      
+      // Auto-execute the query with the understanding message, explanation, and processing steps
+      return this.executeAndFormatQuery(
+        sessionId, 
+        translationResult.sql, 
+        understandingMessage, 
+        queryExplanation,
+        processingSteps
+      );
       
     } catch (error) {
       console.error(`[processEnhancedNLQ] Error processing enhanced NLQ:`, error);
@@ -900,7 +954,21 @@ export class ReportingMCPServer {
     }
   }
 
-  private async executeAndFormatQuery(sessionId: string, sql: string, understandingMessage?: string, queryExplanation?: string): Promise<AnalyzeDataResponse> {
+  private async executeAndFormatQuery(
+    sessionId: string, 
+    sql: string, 
+    understandingMessage?: string, 
+    queryExplanation?: string,
+    processingSteps?: Array<{
+      type: string;
+      message?: string;
+      filters?: { description: string; sqlClause: string };
+      aggregations?: { description: string; sqlClause: string };
+      groupBy?: { description: string; sqlClause: string };
+      orderBy?: { description: string; sqlClause: string };
+      limit?: { description: string; sqlClause: string };
+    }>
+  ): Promise<AnalyzeDataResponse> {
     const sessionData = this.sessions.get(sessionId);
     
     if (!sessionData) {
@@ -1004,15 +1072,34 @@ export class ReportingMCPServer {
         }
       }
       
-      // Return formatted results
-      return {
+      // Add processing steps to the formatted result if provided
+      if (processingSteps && processingSteps.length > 0) {
+        formattedResult.processingSteps = processingSteps;
+      }
+
+      // Return formatted results with conditional fields
+      const response: AnalyzeDataResponse = {
         content: content,
         sql: this.config.includeSqlInResponses ? sql : '',
         originalQuery: sessionData.query,
-        needsConfirmation: false, // Explicitly set to false since we're auto-executing
-        // Only include translationResult if it exists
-        ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
+        needsConfirmation: false // Explicitly set to false since we're auto-executing
       };
+      
+      // Only include fields that exist
+      if (formattedResult.rawData) {
+        response.rawData = formattedResult.rawData;
+      }
+      
+      if (formattedResult.processingSteps) {
+        response.processingSteps = formattedResult.processingSteps;
+      }
+      
+      // Only include translationResult if it exists
+      if (sessionData.translationResult) {
+        response.translationResult = sessionData.translationResult;
+      }
+      
+      return response;
     } catch (error) {
       logFlow('SERVER', 'ERROR', 'Error executing query', error);
       

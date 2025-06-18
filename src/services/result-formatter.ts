@@ -32,6 +32,16 @@ export interface FormattedResult {
     truncated: boolean;    // Whether the display data was truncated
     exceedsDownloadLimit: boolean; // Whether the data exceeds 5000 row download limit
   };
+  // Processing steps to show how the query was interpreted and executed
+  processingSteps?: Array<{
+    type: string;
+    message?: string;
+    filters?: { description: string; sqlClause: string };
+    aggregations?: { description: string; sqlClause: string };
+    groupBy?: { description: string; sqlClause: string };
+    orderBy?: { description: string; sqlClause: string };
+    limit?: { description: string; sqlClause: string };
+  }>;
   metadata: {
     rowCount: number;
     totalRows: number;
