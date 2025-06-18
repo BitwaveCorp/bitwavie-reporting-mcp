@@ -801,10 +801,10 @@ export class ReportingMCPServer {
       }
       
       // Create understanding message based on the interpreted query
-      const understandingMessage = `I understand your query as: "${translationResult.interpretedQuery}"`;
+      const understandingMessage = `"${translationResult.interpretedQuery}"`;
       
       // Add explanation of how the query was generated
-      const queryExplanation = `\n\n**Wavie took the following steps:**\n\n1. "${translationResult.interpretedQuery}"\n2. Your request was translated into SQL: \`${translationResult.sql}\`\n3. The query was executed against the database\n4. Results were formatted for display`;
+      const queryExplanation = `\n\n**Wavie took the following steps:**\n\n "${translationResult.interpretedQuery}"\n Your request was translated into SQL: \`${translationResult.sql}\`\n The query was executed against the database\n Results were formatted for display`;
       
       // Create processing steps for frontend display
       // Define processing steps with proper typing
@@ -1005,17 +1005,12 @@ export class ReportingMCPServer {
       limit?: { description: string; sqlClause: string };
     }>
   ): Promise<AnalyzeDataResponse> {
+    // Get the session data
     const sessionData = this.sessions.get(sessionId);
-    
     if (!sessionData) {
-      return {
-        content: [{ type: 'text', text: 'Session expired or not found' }],
-        error: 'Session not found',
-        sql: this.config.includeSqlInResponses ? sql : '',
-        originalQuery: ''
-      };
+      throw new Error('Session not found');
     }
-    
+
     try {
       // Execute the query
       if (!this.queryExecutor) {
@@ -1064,12 +1059,7 @@ export class ReportingMCPServer {
       );
       
       // If we have an understanding message and/or query explanation, prepend them to the content
-      let content = formattedResult.content;
-      
-      // Start with empty content array if none exists
-      if (!content) {
-        content = [];
-      }
+      let content = formattedResult.content || [];
       
       // Add understanding message if provided
       if (understandingMessage) {
@@ -1094,90 +1084,111 @@ export class ReportingMCPServer {
       if (formattedResult.rawData) {
         console.log('Raw data structure:', {
           headers: formattedResult.rawData.headers,
-          totalRows: formattedResult.rawData.rows.length,
+          totalRows: formattedResult.rawData.rows?.length || 0,
           displayRows: formattedResult.rawData.displayRows,
           truncated: formattedResult.rawData.truncated,
           exceedsDownloadLimit: formattedResult.rawData.exceedsDownloadLimit
         });
         
         // Log a sample of the data (first 2 rows)
-        if (formattedResult.rawData.rows.length > 0) {
+        if (formattedResult.rawData.rows?.length) {
           console.log('Data sample:', {
             sampleRows: formattedResult.rawData.rows.slice(0, 2)
           });
         }
       }
       
-      // Add processing steps to the formatted result if provided
-      if (processingSteps && processingSteps.length > 0) {
-        console.log('Adding processingSteps to formattedResult:', JSON.stringify(processingSteps, null, 2));
-        formattedResult.processingSteps = processingSteps;
-      } else {
-        console.log('No processingSteps provided to executeAndFormatQuery');
-        // Create default processing steps from the content if not provided
-        if (queryExplanation) {
-          formattedResult.processingSteps = [
-            {
-              type: 'query_explanation',
-              message: queryExplanation
-            }
-          ];
-          console.log('Created default processingSteps from queryExplanation');
-        }
-      }
-
-      // Return formatted results with conditional fields
+      // Build the response object
       const response: AnalyzeDataResponse = {
         content: content,
-        sql: this.config.includeSqlInResponses ? sql : '',
-        originalQuery: sessionData.query,
-        needsConfirmation: false // Explicitly set to false since we're auto-executing
+        needsConfirmation: false,
+        originalQuery: sessionData.query
       };
       
-      // Only include fields that exist
+      // Add rawData if available
       if (formattedResult.rawData) {
         response.rawData = formattedResult.rawData;
       }
       
-      // Add processing steps and log them
-      if (formattedResult.processingSteps) {
-        console.log('Adding processingSteps to response:', JSON.stringify(formattedResult.processingSteps, null, 2));
-        response.processingSteps = formattedResult.processingSteps;
-      } else {
-        console.log('No processingSteps found in formattedResult');
+      // Add rawData if available
+      if (formattedResult.rawData) {
+        response.rawData = formattedResult.rawData;
       }
       
-      // Only include translationResult if it exists
-      if (sessionData.translationResult) {
-        response.translationResult = sessionData.translationResult;
+      // Add processing steps if available
+      if (processingSteps?.length) {
+        response.processingSteps = processingSteps;
+        console.log('Using provided processingSteps:', JSON.stringify(processingSteps, null, 2));
+      } else if (formattedResult.processingSteps?.length) {
+        response.processingSteps = formattedResult.processingSteps;
+        console.log('Using processingSteps from formattedResult');
+      } else if (queryExplanation) {
+        // Create default processing steps from query explanation if none provided
+        response.processingSteps = [{
+          type: 'query_explanation',
+          message: queryExplanation
+        }];
+        console.log('Created default processingSteps from queryExplanation');
+      }
+      
+      // Add SQL if configured
+      if (this.config.includeSqlInResponses) {
+        response.sql = sql;
+      }
+      
+      // Log the response structure for debugging
+      console.log('Response structure:', {
+        hasRawData: !!response.rawData,
+        rawDataRowCount: response.rawData?.rows?.length || 0,
+        hasProcessingSteps: !!response.processingSteps,
+        processingStepsCount: response.processingSteps?.length || 0,
+        hasSql: !!response.sql
+      });
+      
+      // Log a sample of the raw data if it exists
+      if (response.rawData?.rows?.length) {
+        console.log('Raw data sample (first 2 rows):', 
+          response.rawData.rows.slice(0, 2));
       }
       
       // Log the final response structure
-      console.log('Final response structure:', Object.keys(response));
+      console.log('Final response structure:', {
+        hasRawData: !!response.rawData,
+        contentLength: response.content?.length || 0,
+        processingSteps: response.processingSteps?.length || 0,
+        hasSql: !!response.sql
+      });
       
       return response;
     } catch (error) {
-      logFlow('SERVER', 'ERROR', 'Error executing query', error);
+      logFlow('SERVER', 'ERROR', 'Error in executeAndFormatQuery', error);
       
-      return {
+      const errorResponse: AnalyzeDataResponse = {
         content: [{ type: 'text', text: `Error executing query: ${formatError(error)}` }],
-        error: formatError(error),
-        sql: this.config.includeSqlInResponses ? sql : '',
-        originalQuery: sessionData.query || '',
-        // Explicitly set needsConfirmation to false for error responses
-        needsConfirmation: false,
-        // Only include translationResult if it exists
-        ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
+        needsConfirmation: false
       };
+      
+      // Only include these fields if they have values
+      if (this.config.includeSqlInResponses) {
+        errorResponse.sql = sql;
+      }
+      
+      if (sessionData?.query) {
+        errorResponse.originalQuery = sessionData.query;
+      }
+      
+      return errorResponse;
     }
   }
-
-  // Session management helper methods
+  
+  /**
+   * Start the session cleanup interval
+   */
   private startSessionCleanup(): void {
-    const cleanupInterval = 60 * 60 * 1000; // 1 hour
+    const cleanupIntervalMs = 60 * 60 * 1000; // 1 hour
     this.cleanupInterval = setInterval(() => {
       this.cleanupOldSessions();
-    }, cleanupInterval);
+    }, cleanupIntervalMs);
     logFlow('SERVER', 'INFO', 'Session cleanup started');
   }
   
@@ -1185,16 +1196,20 @@ export class ReportingMCPServer {
     const now = Date.now();
     let cleanedCount = 0;
     
-    for (const [sessionId, sessionData] of this.sessions.entries()) {
-      const sessionAge = now - sessionData.timestamp;
-      if (sessionAge > this.sessionMaxAgeMs) {
-        this.sessions.delete(sessionId);
-        cleanedCount++;
+    try {
+      for (const [sessionId, sessionData] of this.sessions.entries()) {
+        const sessionAge = now - sessionData.timestamp;
+        if (sessionAge > this.sessionMaxAgeMs) {
+          this.sessions.delete(sessionId);
+          cleanedCount++;
+        }
       }
-    }
-    
-    if (cleanedCount > 0) {
-      logFlow('SERVER', 'INFO', `Cleaned up ${cleanedCount} expired sessions`);
+      
+      if (cleanedCount > 0) {
+        logFlow('SERVER', 'INFO', `Cleaned up ${cleanedCount} expired sessions`);
+      }
+    } catch (error) {
+      logFlow('SERVER', 'ERROR', 'Error during session cleanup', error);
     }
   }
 }
