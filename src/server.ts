@@ -1008,6 +1008,7 @@ export class ReportingMCPServer {
     console.log('DATA CHECKER [BACKEND] - Starting executeAndFormatQuery');
     console.log('DATA CHECKER [BACKEND] - SQL:', sql.substring(0, 500) + (sql.length > 500 ? '...' : ''));
     console.log('DATA CHECKER [BACKEND] - Processing steps:', JSON.stringify(processingSteps, null, 2));
+    
     // Get the session data
     const sessionData = this.sessions.get(sessionId);
     if (!sessionData) {
@@ -1024,20 +1025,21 @@ export class ReportingMCPServer {
       
       // Store the execution result in session data
       if (executionResult) {
-        // Cast the execution result to our extended type
         sessionData.executionResult = executionResult as unknown as ExecutionResult;
       }
       
+      // Handle query execution error
       if (executionResult.error) {
+        const errorContent = [{ 
+          type: 'text', 
+          text: `Query execution failed: ${executionResult.error.message}` 
+        }];
+        
         return {
-          content: [{ type: 'text', text: `Query execution failed: ${executionResult.error.message}` }],
+          content: errorContent,
           error: executionResult.error.message,
-          sql: this.config.includeSqlInResponses ? sql : '',
           originalQuery: sessionData.query,
-          // Explicitly set needsConfirmation to false for error responses after confirmation
-          needsConfirmation: false,
-          // Only include translationResult if it exists
-          ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
+          needsConfirmation: false
         };
       }
       
@@ -1060,91 +1062,121 @@ export class ReportingMCPServer {
         formatterInput,
         sessionData.translationResult
       );
+
+      // Format processing steps
+      const formattedProcessingSteps = [];
+      
+      // Add interpretation step
+      if (sessionData.translationResult?.interpretedQuery) {
+        formattedProcessingSteps.push({
+          type: 'interpretation',
+          message: `Interpreted query: ${sessionData.translationResult.interpretedQuery}`,
+          sqlClause: ''
+        });
+      }
+
+      // Add SQL generation step
+      formattedProcessingSteps.push({
+        type: 'sql',
+        message: 'Generated SQL query',
+        sqlClause: sql
+      });
+
+      // Add components if available
+      if (sessionData.translationResult?.components) {
+        const { components } = sessionData.translationResult;
+        
+        if (components.filterOperations) {
+          formattedProcessingSteps.push({
+            type: 'filters',
+            message: 'Applied filters',
+            ...components.filterOperations
+          });
+        }
+        
+        if (components.aggregationOperations) {
+          formattedProcessingSteps.push({
+            type: 'aggregations',
+            message: 'Applied aggregations',
+            ...components.aggregationOperations
+          });
+        }
+        
+        if (components.groupByOperations) {
+          formattedProcessingSteps.push({
+            type: 'groupBy',
+            message: 'Grouped results by',
+            ...components.groupByOperations
+          });
+        }
+        
+        if (components.orderByOperations) {
+          formattedProcessingSteps.push({
+            type: 'orderBy',
+            message: 'Sorted results by',
+            ...components.orderByOperations
+          });
+        }
+        
+        if (components.limitOperations) {
+          formattedProcessingSteps.push({
+            type: 'limit',
+            message: 'Limited results',
+            ...components.limitOperations
+          });
+        }
+      }
       
       // If we have an understanding message and/or query explanation, prepend them to the content
       let content = formattedResult.content || [];
-      
-      // Add understanding message if provided
-      if (understandingMessage) {
-        content = [
-          { type: 'text', text: understandingMessage },
-          ...content
-        ];
-      }
-      
-      // Add query explanation at the end if provided
-      if (queryExplanation) {
-        content.push({ type: 'text', text: queryExplanation });
-      }
-      
-      // Log the response structure before sending to frontend
-      console.log('Response structure:', {
-        contentLength: content.length,
-        hasRawData: !!formattedResult.rawData
-      });
-      
-      // Log the rawData if available
       if (formattedResult.rawData) {
-        console.log('Raw data structure:', {
-          headers: formattedResult.rawData.headers,
-          totalRows: formattedResult.rawData.rows?.length || 0,
-          displayRows: formattedResult.rawData.displayRows,
-          truncated: formattedResult.rawData.truncated,
-          exceedsDownloadLimit: formattedResult.rawData.exceedsDownloadLimit
+        console.log('DATA CHECKER [BACKEND] - Raw data structure:', {
+          hasHeaders: !!formattedResult.rawData.headers,
+          headersCount: formattedResult.rawData.headers?.length || 0,
+          rowsCount: formattedResult.rawData.rows?.length || 0,
+          firstRow: formattedResult.rawData.rows?.[0] || 'No rows'
         });
         
         // Log a sample of the data (first 2 rows)
         if (formattedResult.rawData.rows?.length) {
-          console.log('Data sample:', {
+          console.log('DATA CHECKER [BACKEND] - Data sample:', {
             sampleRows: formattedResult.rawData.rows.slice(0, 2)
           });
         }
       }
       
-      // Build the response object
+      // Determine which processing steps to use (in priority order)
+      const finalProcessingSteps = processingSteps?.length 
+        ? processingSteps 
+        : formattedResult.processingSteps?.length 
+          ? formattedResult.processingSteps 
+          : queryExplanation 
+            ? [{ type: 'query_explanation', message: queryExplanation }] 
+            : formattedProcessingSteps;
+
+      // Build the complete response object in one go
       const response: AnalyzeDataResponse = {
-        content: content,
+        // Required fields
+        content: understandingMessage 
+          ? [{ type: 'text', text: understandingMessage }, ...formattedResult.content] 
+          : formattedResult.content,
+        originalQuery: sessionData.query,
         needsConfirmation: false,
-        originalQuery: sessionData.query
+        
+        // Conditional fields
+        ...(formattedResult.rawData && { rawData: formattedResult.rawData }),
+        ...(finalProcessingSteps.length > 0 && { processingSteps: finalProcessingSteps }),
+        ...(this.config.includeSqlInResponses && { sql }),
+        ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
       
-      // Add rawData if available
-      if (formattedResult.rawData) {
-        response.rawData = formattedResult.rawData;
-      }
-      
-      // Add rawData if available
-      if (formattedResult.rawData) {
-        response.rawData = formattedResult.rawData;
-      }
-      
-      // Add processing steps if available
-      if (processingSteps?.length) {
-        response.processingSteps = processingSteps;
-        console.log('Using provided processingSteps:', JSON.stringify(processingSteps, null, 2));
-      } else if (formattedResult.processingSteps?.length) {
-        response.processingSteps = formattedResult.processingSteps;
-        console.log('Using processingSteps from formattedResult');
-      } else if (queryExplanation) {
-        // Create default processing steps from query explanation if none provided
-        response.processingSteps = [{
-          type: 'query_explanation',
-          message: queryExplanation
-        }];
-        console.log('Created default processingSteps from queryExplanation');
-      }
-      
-      // Add SQL if configured
-      if (this.config.includeSqlInResponses) {
-        response.sql = sql;
-      }
-      
-      // Log the response structure for debugging
-      console.log('Response structure:', {
+      // Log the final response structure
+      console.log('DATA CHECKER [BACKEND] - Final response structure:', {
+        contentLength: response.content?.length || 0,
         hasRawData: !!response.rawData,
-        rawDataRowCount: response.rawData?.rows?.length || 0,
-        hasProcessingSteps: !!response.processingSteps,
-        processingStepsCount: response.processingSteps?.length || 0,
+        rawDataRows: response.rawData?.rows?.length || 0,
+        processingSteps: response.processingSteps?.length || 0,
+        processingStepsSample: response.processingSteps?.slice(0, 2),
         hasSql: !!response.sql
       });
       
