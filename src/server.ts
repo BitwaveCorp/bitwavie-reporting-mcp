@@ -1154,6 +1154,16 @@ export class ReportingMCPServer {
             ? [{ type: 'query_explanation', message: queryExplanation }] 
             : formattedProcessingSteps;
 
+      // Log the raw data before building the response - BACKEND CHECK 1
+      console.log('1. BACKEND CHECK - Raw data before response:', {
+        hasFormattedResult: !!formattedResult,
+        hasRawData: !!formattedResult.rawData,
+        rawDataType: formattedResult.rawData ? typeof formattedResult.rawData : 'none',
+        rawDataKeys: formattedResult.rawData ? Object.keys(formattedResult.rawData) : [],
+        rawDataSample: formattedResult.rawData?.rows ? 
+          formattedResult.rawData.rows.slice(0, 2) : 'No rows in rawData'
+      });
+
       // Build the complete response object in one go
       const response: AnalyzeDataResponse = {
         // Required fields
@@ -1170,28 +1180,33 @@ export class ReportingMCPServer {
         ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
       
-      // Log the final response structure
-      console.log('DATA CHECKER [BACKEND] - Final response structure:', {
+      // BACKEND CHECK 2: After building response
+      console.log('2. BACKEND CHECK - Response structure after building:', {
         contentLength: response.content?.length || 0,
         hasRawData: !!response.rawData,
-        rawDataRows: response.rawData?.rows?.length || 0,
-        processingSteps: response.processingSteps?.length || 0,
-        processingStepsSample: response.processingSteps?.slice(0, 2),
+        rawDataStructure: response.rawData ? {
+          hasHeaders: 'headers' in response.rawData,
+          hasRows: 'rows' in response.rawData,
+          rowCount: response.rawData.rows?.length || 0,
+          headersSample: response.rawData.headers?.slice(0, 5) || 'No headers',
+          firstRow: response.rawData.rows?.[0] || 'No rows'
+        } : 'No rawData in response',
+        processingStepsCount: response.processingSteps?.length || 0,
         hasSql: !!response.sql
       });
-      
-      // Log a sample of the raw data if it exists
+
+      // BACKEND CHECK 3: Raw data sample if exists
       if (response.rawData?.rows?.length) {
-        console.log('Raw data sample (first 2 rows):', 
-          response.rawData.rows.slice(0, 2));
+        console.log('3. BACKEND CHECK - Raw data sample (first 2 rows):', response.rawData.rows.slice(0, 2));
       }
       
-      // Log the final response structure
-      console.log('Final response structure:', {
+      // BACKEND CHECK 4: Final response structure
+      console.log('4. BACKEND CHECK - Final response structure:', {
         hasRawData: !!response.rawData,
         contentLength: response.content?.length || 0,
         processingSteps: response.processingSteps?.length || 0,
-        hasSql: !!response.sql
+        hasSql: !!response.sql,
+        responseKeys: Object.keys(response)
       });
       
       return response;
