@@ -1078,6 +1078,16 @@ export class ReportingMCPServer {
         formattedResult.processingSteps = processingSteps;
       } else {
         console.log('No processingSteps provided to executeAndFormatQuery');
+        // Create default processing steps from the content if not provided
+        if (queryExplanation) {
+          formattedResult.processingSteps = [
+            {
+              type: 'query_explanation',
+              message: queryExplanation
+            }
+          ];
+          console.log('Created default processingSteps from queryExplanation');
+        }
       }
 
       // Return formatted results with conditional fields
