@@ -804,7 +804,7 @@ export class ReportingMCPServer {
       const understandingMessage = `I understand your query as: "${translationResult.interpretedQuery}"`;
       
       // Add explanation of how the query was generated
-      const queryExplanation = `\n\n**Wavie took the following steps:**\n\n1. Wavie interpreted your request as: "${translationResult.interpretedQuery}"\n2. Your request was translated into SQL: \`${translationResult.sql}\`\n3. The query was executed against the database\n4. Results were formatted for display`;
+      const queryExplanation = `\n\n**Wavie took the following steps:**\n\n1. "${translationResult.interpretedQuery}"\n2. Your request was translated into SQL: \`${translationResult.sql}\`\n3. The query was executed against the database\n4. Results were formatted for display`;
       
       // Create processing steps for frontend display
       const processingSteps = [
@@ -1074,7 +1074,10 @@ export class ReportingMCPServer {
       
       // Add processing steps to the formatted result if provided
       if (processingSteps && processingSteps.length > 0) {
+        console.log('Adding processingSteps to formattedResult:', JSON.stringify(processingSteps, null, 2));
         formattedResult.processingSteps = processingSteps;
+      } else {
+        console.log('No processingSteps provided to executeAndFormatQuery');
       }
 
       // Return formatted results with conditional fields
@@ -1090,14 +1093,21 @@ export class ReportingMCPServer {
         response.rawData = formattedResult.rawData;
       }
       
+      // Add processing steps and log them
       if (formattedResult.processingSteps) {
+        console.log('Adding processingSteps to response:', JSON.stringify(formattedResult.processingSteps, null, 2));
         response.processingSteps = formattedResult.processingSteps;
+      } else {
+        console.log('No processingSteps found in formattedResult');
       }
       
       // Only include translationResult if it exists
       if (sessionData.translationResult) {
         response.translationResult = sessionData.translationResult;
       }
+      
+      // Log the final response structure
+      console.log('Final response structure:', Object.keys(response));
       
       return response;
     } catch (error) {
