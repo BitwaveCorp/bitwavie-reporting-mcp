@@ -213,8 +213,10 @@ export class LotsReportGenerator {
   private buildWhereConditions(parameters: ReportParameters, filters?: any): string {
     const conditions: string[] = [];
 
-    // Required parameters
-    conditions.push(`runId = @runId`);
+    // Only add runId condition if it's provided in parameters
+    if (parameters.runId) {
+      conditions.push(`runId = @runId`);
+    }
     
     if (parameters.orgId) {
       conditions.push(`orgId = @orgId`);
