@@ -265,6 +265,13 @@ interface AnalyzeDataResponse {
   error?: string;
   originalQuery?: string;
   translationResult?: TranslationResult;
+  rawData?: {
+    headers: string[];
+    rows: any[];
+    displayRows: number;
+    truncated: boolean;
+    exceedsDownloadLimit: boolean;
+  };
 }
 
 interface TestConnectionResponse {
@@ -980,39 +987,39 @@ export class ReportingMCPServer {
         content.push({ type: 'text', text: queryExplanation });
       }
       
-      // Log the response structure before sending to frontend
-      console.log('Response structure:', {
-        contentLength: content.length,
-        hasRawData: !!formattedResult.rawData
-      });
-      
-      // Log the rawData if available
-      if (formattedResult.rawData) {
-        console.log('Raw data structure:', {
-          headers: formattedResult.rawData.headers,
-          totalRows: formattedResult.rawData.rows.length,
-          displayRows: formattedResult.rawData.displayRows,
-          truncated: formattedResult.rawData.truncated,
-          exceedsDownloadLimit: formattedResult.rawData.exceedsDownloadLimit
-        });
-        
-        // Log a sample of the data (first 2 rows)
-        if (formattedResult.rawData.rows.length > 0) {
-          console.log('Data sample:', {
-            sampleRows: formattedResult.rawData.rows.slice(0, 2)
-          });
-        }
-      }
-      
-      // Return formatted results
-      return {
+      // Create the response object
+      const response: AnalyzeDataResponse = {
         content: content,
         sql: this.config.includeSqlInResponses ? sql : '',
         originalQuery: sessionData.query,
         needsConfirmation: false, // Explicitly set to false since we're auto-executing
+        // Include rawData if it exists in formattedResult
+        ...(formattedResult.rawData && { rawData: formattedResult.rawData }),
         // Only include translationResult if it exists
         ...(sessionData.translationResult && { translationResult: sessionData.translationResult })
       };
+      
+      // Log the final response structure
+      console.log('200 - Final response structure:', {
+        hasRawData: !!response.rawData,
+        contentLength: response.content?.length || 0,
+        responseKeys: Object.keys(response)
+      });
+      
+      // Log rawData preview if it exists
+      if (response.rawData) {
+        const rawDataString = JSON.stringify(response.rawData);
+        console.log('201 - RawData preview (first 100 chars):', rawDataString.substring(0, 100) + (rawDataString.length > 100 ? '...' : ''));
+        console.log('202 - RawData structure:', {
+          headers: response.rawData.headers,
+          rowCount: response.rawData.rows.length,
+          displayRows: response.rawData.displayRows,
+          truncated: response.rawData.truncated,
+          exceedsDownloadLimit: response.rawData.exceedsDownloadLimit
+        });
+      }
+      
+      return response;
     } catch (error) {
       logFlow('SERVER', 'ERROR', 'Error executing query', error);
       
