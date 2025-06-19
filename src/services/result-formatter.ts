@@ -202,13 +202,11 @@ export class ResultFormatter {
       const visualizationHint = this.suggestVisualization(headers, data);
       
       if (visualizationHint) {
+        // Only add to metadata, not to visible content
         formattedResult.metadata.visualizationHint = visualizationHint;
         
-        // Add visualization hint to content
-        formattedResult.content.push({
-          type: 'text',
-          text: `**Visualization Suggestion:** ${visualizationHint}`
-        });
+        // Visualization hint is now only in metadata, not in visible content
+        // This keeps the functionality available to the application but doesn't display it to the user
       }
     }
     
