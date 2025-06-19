@@ -470,6 +470,14 @@ export class ReportingMCPServer {
           responseKeys: Object.keys(successResponse)
         });
         
+        // E. RAWDATA_CHECKER - Final API response before sending to frontend
+        console.log('E. RAWDATA_CHECKER - Final API response before sending to frontend:', {
+          hasRawData: !!successResponse.rawData,
+          rawDataPreview: successResponse.rawData ? 
+            `Headers: ${JSON.stringify(successResponse.rawData.headers).substring(0, 50)}..., ` +
+            `Rows: ${JSON.stringify(successResponse.rawData.rows?.slice(0, 1)).substring(0, 50)}...` : 'No raw data'
+        });
+        
         // Send the response with all fields including rawData
         res.json(successResponse);
       } catch (error) {
@@ -811,7 +819,17 @@ export class ReportingMCPServer {
       
       // Always use enhanced NLQ flow
       if (this.llmQueryTranslator) {
-        return this.processEnhancedNLQ(sessionId, query);
+        const result = await this.processEnhancedNLQ(sessionId, query);
+    
+    // D. RAWDATA_CHECKER - In handleAnalyzeData after processEnhancedNLQ
+    console.log('D. RAWDATA_CHECKER - In handleAnalyzeData after processEnhancedNLQ:', {
+      hasRawData: !!result.rawData,
+      rawDataPreview: result.rawData ? 
+        `Headers: ${JSON.stringify(result.rawData.headers).substring(0, 50)}..., ` +
+        `Rows: ${JSON.stringify(result.rawData.rows?.slice(0, 1)).substring(0, 50)}...` : 'No raw data'
+    });
+    
+    return result;
       } else {
         // Only if LLM translator is not available, throw an error
         throw new Error('Enhanced NLQ flow is required but LLM translator is not initialized');
@@ -1107,10 +1125,25 @@ export class ReportingMCPServer {
         columns: typedResult.columns || []
       };
       
+      // A. RAWDATA_CHECKER - Before formatting results
+      console.log('A. RAWDATA_CHECKER - Before formatting results:', {
+        hasRows: !!formatterInput.rows,
+        rowsPreview: formatterInput.rows ? 
+          JSON.stringify(formatterInput.rows.slice(0, 2)).substring(0, 100) + '...' : 'No rows'
+      });
+
       const formattedResult = await this.resultFormatter.formatResults(
         formatterInput,
         sessionData.translationResult
       );
+
+      // B. RAWDATA_CHECKER - After formatting results
+      console.log('B. RAWDATA_CHECKER - After formatting results:', {
+        hasRawData: !!formattedResult.rawData,
+        rawDataPreview: formattedResult.rawData ? 
+          `Headers: ${JSON.stringify(formattedResult.rawData.headers).substring(0, 50)}..., ` +
+          `Rows: ${JSON.stringify(formattedResult.rawData.rows?.slice(0, 1)).substring(0, 50)}...` : 'No raw data'
+      });
 
       // Format processing steps
       const formattedProcessingSteps = [];
@@ -1251,13 +1284,27 @@ export class ReportingMCPServer {
       
       // BACKEND CHECK 4: Final response structure
       console.log('4. BACKEND CHECK - Final response structure:', {
-        hasRawData: !!response.rawData,
+        responseKeys: Object.keys(response),
         contentLength: response.content?.length || 0,
-        processingSteps: response.processingSteps?.length || 0,
-        hasSql: !!response.sql,
-        responseKeys: Object.keys(response)
+        hasRawData: !!response.rawData
       });
       
+      // C. RAWDATA_CHECKER - Final response in executeAndFormatQuery
+      console.log('C. RAWDATA_CHECKER - Final response in executeAndFormatQuery:', {
+        hasRawData: !!response.rawData,
+        rawDataPreview: response.rawData ? 
+          `Headers: ${JSON.stringify(response.rawData.headers).substring(0, 50)}..., ` +
+          `Rows: ${JSON.stringify(response.rawData.rows?.slice(0, 1)).substring(0, 50)}...` : 'No raw data'
+      });
+
+      // Additional response details for debugging
+      console.log('C-EXTRA. RAWDATA_CHECKER - Response details:', {
+        hasContent: !!response.content,
+        contentLength: response.content?.length || 0,
+        hasProcessingSteps: !!response.processingSteps,
+        processingStepsCount: response.processingSteps?.length || 0
+      });
+
       return response;
     } catch (error) {
       logFlow('SERVER', 'ERROR', 'Error in executeAndFormatQuery', error);
