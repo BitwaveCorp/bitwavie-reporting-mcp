@@ -917,12 +917,332 @@ export class ReportingMCPServer {
    * @param translationResult Translation result containing report type and parameters
    * @returns Formatted report response
    */
+  /**
+   * Handle slash commands for report-related operations
+   * @param sessionId The session ID
+   * @param command The full command string including the slash
+   * @returns Response with appropriate content
+   */
+  private async handleSlashCommand(sessionId: string, command: string): Promise<AnalyzeDataResponse> {
+    // Strip the slash and get the command text
+    const commandText = command.substring(1).trim();
+    
+    logFlow('SERVER', 'INFO', `Processing slash command: ${commandText}`, { sessionId });
+    
+    // Handle special commands
+    if (commandText === '' || commandText === 'help') {
+      return this.listAvailableCommands(sessionId);
+    }
+    
+    if (commandText === 'reports') {
+      return this.listAvailableReports(sessionId);
+    }
+    
+    // Check if this is a direct report ID command
+    if (this.reportRegistry) {
+      const directMatch = this.reportRegistry.getReportById(commandText);
+      if (directMatch) {
+        return this.runReportById(sessionId, commandText, {});
+      }
+    }
+    
+    // Check if this is a /run command
+    if (commandText.toLowerCase().startsWith('run ')) {
+      const reportName = commandText.substring(4).trim();
+      return this.findAndRunReportByName(sessionId, reportName);
+    }
+    
+    // For any other command, use NLQ to match to a report
+    return this.matchReportCommand(sessionId, commandText);
+  }
+  
+  /**
+   * List all available slash commands
+   * @param sessionId The session ID
+   * @returns Response with command list
+   */
+  private async listAvailableCommands(sessionId: string): Promise<AnalyzeDataResponse> {
+    const content = [
+      { 
+        type: 'text', 
+        text: '# Available Commands\n\n' +
+              'You can use the following slash commands:\n\n' +
+              '- `/reports` - List all available reports\n' +
+              '- `/run [report name]` - Run a specific report by name\n' +
+              '- `/[report-id]` - Run a specific report by ID\n' +
+              '- `/help` - Show this help message\n\n' +
+              'You can also use natural language after a slash to find a report:\n' +
+              '`/show me inventory balance`\n\n' +
+              'Without a slash prefix, your query will be processed as an ad-hoc analysis.'
+      }
+    ];
+    
+    return { content };
+  }
+  
+  /**
+   * List all available reports
+   * @param sessionId The session ID
+   * @returns Response with report list
+   */
+  private async listAvailableReports(sessionId: string): Promise<AnalyzeDataResponse> {
+    if (!this.reportRegistry) {
+      return {
+        content: [{ type: 'text', text: 'Report registry not initialized.' }],
+        error: 'Report registry not initialized'
+      };
+    }
+    
+    const reports = this.reportRegistry.getAllReports();
+    
+    if (reports.length === 0) {
+      return {
+        content: [{ type: 'text', text: 'No reports are currently available.' }]
+      };
+    }
+    
+    const reportItems = reports.map(report => {
+      return `### ${report.name}\n` +
+             `${report.description}\n\n` +
+             `**ID:** \`${report.id}\`\n\n` +
+             `**Run with:** \`/${report.id}\` or \`/run ${report.name}\`\n\n` +
+             `**Keywords:** ${report.keywords.join(', ')}\n`;
+    }).join('\n---\n\n');
+    
+    const content = [
+      { 
+        type: 'text', 
+        text: '# Available Reports\n\n' + reportItems
+      }
+    ];
+    
+    return { content };
+  }
+  
+  /**
+   * Run a report by its ID
+   * @param sessionId The session ID
+   * @param reportId The report ID
+   * @param parameters The parameters for the report
+   * @returns The report response
+   */
+  private async runReportById(sessionId: string, reportId: string, parameters: Record<string, any>): Promise<AnalyzeDataResponse> {
+    if (!this.reportRegistry) {
+      return {
+        content: [{ type: 'text', text: 'Report registry not initialized.' }],
+        error: 'Report registry not initialized'
+      };
+    }
+    
+    try {
+      // Create a translation result that mimics what would come from the LLM
+      const translationResult: TranslationResult & {
+        reportType: string;
+        reportParameters?: Record<string, any> | undefined;
+        processingSteps?: Array<{step: string, description: string}> | undefined;
+      } = {
+        originalQuery: `/${reportId}`,
+        interpretedQuery: `Run ${reportId} report`,
+        sql: '',
+        components: {
+          filterOperations: { description: '', sqlClause: '' },
+          aggregationOperations: { description: '', sqlClause: '' },
+          groupByOperations: { description: '', sqlClause: '' },
+          orderByOperations: { description: '', sqlClause: '' },
+          limitOperations: { description: '', sqlClause: '' }
+        },
+        requiresConfirmation: false,
+        confidence: 1.0,
+        alternativeInterpretations: undefined,
+        isReportQuery: true,
+        reportType: reportId,
+        reportParameters: parameters,
+        processingSteps: [
+          {
+            step: 'Report Detection',
+            description: `Direct report execution via slash command: ${reportId}`
+          }
+        ]
+      };
+      
+      // Execute the report using the existing method
+      return this.executeReportQuery(sessionId, translationResult);
+    } catch (error: any) {
+      logFlow('SERVER', 'ERROR', `Error running report by ID: ${reportId}`, { error: error.message });
+      
+      return {
+        content: [{ type: 'text', text: `Error running report: ${formatError(error)}` }],
+        error: formatError(error)
+      };
+    }
+  }
+  
+  /**
+   * Find and run a report by its name
+   * @param sessionId The session ID
+   * @param reportName The report name (can be partial)
+   * @returns The report response or suggestions
+   */
+  private async findAndRunReportByName(sessionId: string, reportName: string): Promise<AnalyzeDataResponse> {
+    if (!this.reportRegistry) {
+      return {
+        content: [{ type: 'text', text: 'Report registry not initialized.' }],
+        error: 'Report registry not initialized'
+      };
+    }
+    
+    try {
+      // Search for reports matching the name
+      const matches = this.reportRegistry.searchReports(reportName);
+      
+      if (matches.length === 0) {
+        return {
+          content: [{ 
+            type: 'text', 
+            text: `No reports found matching "${reportName}".\n\nUse \`/reports\` to see all available reports.`
+          }]
+        };
+      }
+      
+      if (matches.length === 1) {
+        // Exact match, run the report
+        if (matches[0] && matches[0].id) {
+          return this.runReportById(sessionId, matches[0].id, {});
+        } else {
+          return {
+            content: [{ type: 'text', text: `Error: Found a match but could not retrieve report ID.` }],
+            error: 'Invalid report match'
+          };
+        }
+      }
+      
+      // Multiple matches, show suggestions
+      const suggestions = matches.map(report => {
+        return `- **${report.name}**: ${report.description}\n  Run with: \`/${report.id}\``;
+      }).join('\n\n');
+      
+      return {
+        content: [{
+          type: 'text',
+          text: `# Multiple Matching Reports\n\nI found several reports that match "${reportName}". Please select one:\n\n${suggestions}`
+        }]
+      };
+    } catch (error: any) {
+      logFlow('SERVER', 'ERROR', `Error finding report by name: ${reportName}`, { error: error.message });
+      
+      return {
+        content: [{ type: 'text', text: `Error finding report: ${formatError(error)}` }],
+        error: formatError(error)
+      };
+    }
+  }
+  
+  /**
+   * Use NLQ to match a command to a report
+   * @param sessionId The session ID
+   * @param commandText The command text (without the slash)
+   * @returns The report response or suggestions
+   */
+  private async matchReportCommand(sessionId: string, commandText: string): Promise<AnalyzeDataResponse> {
+    if (!this.llmQueryTranslator) {
+      return {
+        content: [{ type: 'text', text: 'LLM Query Translator not initialized.' }],
+        error: 'LLM Query Translator not initialized'
+      };
+    }
+    
+    try {
+      // Use the report detection method with a higher confidence threshold
+      const reportDetection = await this.llmQueryTranslator.detectReportQuery(commandText);
+      
+      // If we have a high confidence match, run the report
+      if (reportDetection.isReportQuery && reportDetection.reportType && reportDetection.confidence > 0.6) {
+        const translationResult: TranslationResult & {
+          reportType: string;
+          reportParameters?: Record<string, any> | undefined;
+          processingSteps?: Array<{step: string, description: string}> | undefined;
+        } = {
+          originalQuery: `/${commandText}`,
+          interpretedQuery: `Generate ${reportDetection.reportType} with parameters: ${JSON.stringify(reportDetection.reportParameters)}`,
+          sql: '',
+          components: {
+            filterOperations: { description: '', sqlClause: '' },
+            aggregationOperations: { description: '', sqlClause: '' },
+            groupByOperations: { description: '', sqlClause: '' },
+            orderByOperations: { description: '', sqlClause: '' },
+            limitOperations: { description: '', sqlClause: '' }
+          },
+          requiresConfirmation: false,
+          confidence: reportDetection.confidence,
+          alternativeInterpretations: undefined,
+          isReportQuery: true,
+          reportType: reportDetection.reportType,
+          reportParameters: reportDetection.reportParameters,
+          processingSteps: [
+            {
+              step: 'Report Detection',
+              description: `Detected request for predefined report: ${reportDetection.reportType}`
+            },
+            {
+              step: 'Parameter Extraction',
+              description: `Extracted parameters: ${JSON.stringify(reportDetection.reportParameters)}`
+            }
+          ]
+        };
+        
+        return this.executeReportQuery(sessionId, translationResult);
+      }
+      
+      // If we have suggested reports, show them
+      if (reportDetection.suggestedReports && reportDetection.suggestedReports.length > 0) {
+        const suggestions = reportDetection.suggestedReports
+          .sort((a, b) => b.confidence - a.confidence)
+          .map(suggestion => {
+            if (this.reportRegistry) {
+              // Search for reports by name and find the best match
+              const matchingReports = this.reportRegistry.searchReports(suggestion.name);
+              if (matchingReports.length > 0) {
+                const report = matchingReports[0]; // Use the first (best) match
+                if (report && report.name && report.description && report.id) {
+                  return `- **${report.name}** (${Math.round(suggestion.confidence * 100)}% match)\n  ${report.description}\n  Run with: \`/${report.id}\``;
+                }
+              }
+            }
+            return `- **${suggestion.name}** (${Math.round(suggestion.confidence * 100)}% match)`;
+          })
+          .join('\n\n');
+        
+        return {
+          content: [{
+            type: 'text',
+            text: `# Report Suggestions\n\nI couldn't find an exact match for "${commandText}", but here are some suggestions:\n\n${suggestions}\n\nUse \`/reports\` to see all available reports.`
+          }]
+        };
+      }
+      
+      // No matches found
+      return {
+        content: [{
+          type: 'text',
+          text: `I couldn't find any reports matching "${commandText}".\n\nUse \`/reports\` to see all available reports, or try a different query.`
+        }]
+      };
+    } catch (error: any) {
+      logFlow('SERVER', 'ERROR', `Error matching report command: ${commandText}`, { error: error.message });
+      
+      return {
+        content: [{ type: 'text', text: `Error matching report: ${formatError(error)}` }],
+        error: formatError(error)
+      };
+    }
+  }
+  
   private async executeReportQuery(
     sessionId: string, 
     translationResult: TranslationResult & {
       reportType: string;
-      reportParameters?: Record<string, any>;
-      processingSteps?: Array<{step: string, description: string}>;
+      reportParameters?: Record<string, any> | undefined;
+      processingSteps?: Array<{step: string, description: string}> | undefined;
     }
   ): Promise<AnalyzeDataResponse> {
     try {
@@ -930,14 +1250,11 @@ export class ReportingMCPServer {
         throw new Error('Report registry not initialized');
       }
       
-      if (!translationResult.reportType) {
-        throw new Error('Report type not specified in translation result');
-      }
+      const reportId = translationResult.reportType;
+      const reportInfo = this.reportRegistry.getReportById(reportId);
       
-      // Get the report generator from the registry
-      const reportInfo = this.reportRegistry.getReportById(translationResult.reportType);
       if (!reportInfo) {
-        throw new Error(`Report type not found: ${translationResult.reportType}`);
+        throw new Error(`Report not found: ${reportId}`);
       }
       
       const { metadata, generator } = reportInfo;
@@ -952,7 +1269,9 @@ export class ReportingMCPServer {
         parameters: translationResult.reportParameters || {}
       });
       
-      const reportResult = await generator.generateReport(translationResult.reportParameters || {});
+      // Ensure parameters is an object even if undefined
+      const reportParameters = translationResult.reportParameters || {};
+      const reportResult = await generator.generateReport(reportParameters);
       
       // Create understanding message
       const understandingMessage = `Generating ${metadata.name}`;
@@ -1043,28 +1362,26 @@ export class ReportingMCPServer {
     console.log(`[processEnhancedNLQ] Processing enhanced NLQ for session ${sessionId}, query: ${query}`);
     
     try {
+      // Check if this is a slash command
+      if (query.startsWith('/')) {
+        return this.handleSlashCommand(sessionId, query);
+      }
+      
       // Translate the query using LLM
       if (!this.llmQueryTranslator) {
         throw new Error('LLMQueryTranslator not initialized');
       }
       
+      // Step 1: Translate the query to SQL
       const translationResult = await this.llmQueryTranslator.translateQuery(query);
-      console.log(`[processEnhancedNLQ] Translation result:`, JSON.stringify(translationResult, null, 2));
-      
-      // Store the translation result in the session data
-      const sessionData = this.sessions.get(sessionId);
-      if (sessionData) {
-        sessionData.translationResult = translationResult;
-        sessionData.query = query;
-      }
-      
-      // Check if this is a report query
+      logFlow('SERVER', 'INFO', 'Translation result', { translationResult });
+
+      // Step 2: Check if this is a report query
       if (translationResult.isReportQuery && translationResult.reportType) {
-        logFlow('SERVER', 'INFO', `Detected report query: ${translationResult.reportType}`);
         return this.executeReportQuery(sessionId, translationResult as TranslationResult & {
           reportType: string;
-          reportParameters?: Record<string, any>;
-          processingSteps?: Array<{step: string, description: string}>;
+          reportParameters?: Record<string, any> | undefined;
+          processingSteps?: Array<{step: string, description: string}> | undefined;
         });
       }
       
@@ -1095,31 +1412,31 @@ export class ReportingMCPServer {
         },
         {
           type: 'components',
-          ...(translationResult.components.filterOperations && {
+          ...(translationResult.components?.filterOperations && {
             filters: {
               description: translationResult.components.filterOperations.description || 'No filters applied',
               sqlClause: translationResult.components.filterOperations.sqlClause || ''
             }
           }),
-          ...(translationResult.components.aggregationOperations && {
+          ...(translationResult.components?.aggregationOperations && {
             aggregations: {
               description: translationResult.components.aggregationOperations.description || 'No aggregations',
               sqlClause: translationResult.components.aggregationOperations.sqlClause || ''
             }
           }),
-          ...(translationResult.components.groupByOperations && {
+          ...(translationResult.components?.groupByOperations && {
             groupBy: {
               description: translationResult.components.groupByOperations.description || 'No grouping',
               sqlClause: translationResult.components.groupByOperations.sqlClause || ''
             }
           }),
-          ...(translationResult.components.orderByOperations && {
+          ...(translationResult.components?.orderByOperations && {
             orderBy: {
               description: translationResult.components.orderByOperations.description || 'No ordering',
               sqlClause: translationResult.components.orderByOperations.sqlClause || ''
             }
           }),
-          ...(translationResult.components.limitOperations && {
+          ...(translationResult.components?.limitOperations && {
             limit: {
               description: translationResult.components.limitOperations.description || 'No limit',
               sqlClause: translationResult.components.limitOperations.sqlClause || ''
@@ -1145,7 +1462,7 @@ export class ReportingMCPServer {
         translationResult.sql, 
         understandingMessage, 
         queryExplanation,
-        processingSteps as any // Temporary type assertion to bypass TypeScript error
+        processingSteps
       );
       
     } catch (error) {
