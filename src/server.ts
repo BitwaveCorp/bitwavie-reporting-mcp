@@ -586,11 +586,35 @@ export class ReportingMCPServer {
                     previousResponse: toolArgs.previousResponse
                   });
                   
-                  return res.json({
+                  // E. RAWDATA_CHECKER - Final API response in RPC endpoint before sending to frontend
+                  console.log('E2. RAWDATA_CHECKER - Final API response in RPC endpoint:', {
+                    hasRawData: !!analyzeResult.rawData,
+                    rawDataPreview: analyzeResult.rawData ? 
+                      `Headers: ${JSON.stringify(analyzeResult.rawData.headers).substring(0, 50)}..., ` +
+                      `Rows: ${JSON.stringify(analyzeResult.rawData.rows?.slice(0, 1)).substring(0, 50)}...` : 'No raw data'
+                  });
+                  
+                  // Log the response structure
+                  console.log('RPC analyze_actions_data final response structure:', {
+                    hasRawData: !!analyzeResult.rawData,
+                    responseKeys: Object.keys(analyzeResult)
+                  });
+                  
+                  // Create the final JSON-RPC response
+                  const jsonRpcResponse = {
                     jsonrpc: '2.0',
                     result: analyzeResult,
                     id
+                  };
+                  
+                  // F. RAWDATA_CHECKER - Check if rawData is present in the JSON-RPC response
+                  console.log('F2. RAWDATA_CHECKER - JSON-RPC response structure:', {
+                    hasResultRawData: !!jsonRpcResponse.result?.rawData,
+                    resultKeys: Object.keys(jsonRpcResponse.result || {}),
+                    responseKeys: Object.keys(jsonRpcResponse)
                   });
+                  
+                  return res.json(jsonRpcResponse);
                 } catch (toolError) {
                   console.error('[RPC] Error in tools/call for analyze_actions_data:', toolError);
                   return res.status(500).json({
