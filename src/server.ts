@@ -660,11 +660,26 @@ export class ReportingMCPServer {
                 console.log('[RPC] handleAnalyzeData result received, length:', 
                   JSON.stringify(analyzeResult).length);
                 
+                // E3. RAWDATA_CHECKER - Final API response in analyze_actions_data method
+                console.log('E3. RAWDATA_CHECKER - Final API response in analyze_actions_data:', {
+                  hasRawData: !!analyzeResult.rawData,
+                  rawDataPreview: analyzeResult.rawData ? 
+                    `Headers: ${JSON.stringify(analyzeResult.rawData.headers).substring(0, 50)}..., ` +
+                    `Rows: ${JSON.stringify(analyzeResult.rawData.rows?.slice(0, 1)).substring(0, 50)}...` : 'No raw data'
+                });
+                
                 const response = {
                   jsonrpc: '2.0',
                   result: analyzeResult,
                   id
                 };
+                
+                // F3. RAWDATA_CHECKER - Check if rawData is present in the JSON-RPC response
+                console.log('F3. RAWDATA_CHECKER - JSON-RPC response structure:', {
+                  hasResultRawData: !!response.result?.rawData,
+                  resultKeys: Object.keys(response.result || {}),
+                  responseKeys: Object.keys(response)
+                });
                 
                 console.log('[RPC] Sending analyze_actions_data response');
                 return res.json(response);
