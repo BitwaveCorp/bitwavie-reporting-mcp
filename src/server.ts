@@ -1027,15 +1027,21 @@ export class ReportingMCPServer {
    * @returns The report response
    */
   private async runReportById(sessionId: string, reportId: string, parameters: Record<string, any>): Promise<AnalyzeDataResponse> {
-    if (!this.reportRegistry) {
-      return {
-        content: [{ type: 'text', text: 'Report registry not initialized.' }],
-        error: 'Report registry not initialized'
-      };
-    }
-    
     try {
-      // Create a translation result that mimics what would come from the LLM
+      if (!this.reportRegistry) {
+        // Initialize reportRegistry if it's not already initialized
+        if (!this.bigQueryClient) {
+          this.bigQueryClient = new BigQueryClient();
+          this.bigQueryClient.configure({
+            projectId: this.config.projectId || '',
+            datasetId: this.config.datasetId || '',
+            tableId: this.config.tableId || ''
+          });
+        }
+        this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+      }
+      
+      // Create a synthetic translation result
       const translationResult: TranslationResult & {
         reportType: string;
         reportParameters?: Record<string, any> | undefined;
@@ -1044,6 +1050,12 @@ export class ReportingMCPServer {
         originalQuery: `/${reportId}`,
         interpretedQuery: `Run ${reportId} report`,
         sql: '',
+        isReportQuery: true,
+        reportType: reportId,
+        reportParameters: parameters,
+        confidence: 1.0,
+        requiresConfirmation: false,
+        alternativeInterpretations: [],
         components: {
           filterOperations: { description: '', sqlClause: '' },
           aggregationOperations: { description: '', sqlClause: '' },
@@ -1051,24 +1063,22 @@ export class ReportingMCPServer {
           orderByOperations: { description: '', sqlClause: '' },
           limitOperations: { description: '', sqlClause: '' }
         },
-        requiresConfirmation: false,
-        confidence: 1.0,
-        alternativeInterpretations: undefined,
-        isReportQuery: true,
-        reportType: reportId,
-        reportParameters: parameters,
         processingSteps: [
-          {
-            step: 'Report Detection',
-            description: `Direct report execution via slash command: ${reportId}`
-          }
+          { step: 'report_detection', description: `Detected request for ${reportId} report` },
+          { step: 'parameter_extraction', description: `Parameters: ${JSON.stringify(parameters)}` }
         ]
       };
       
-      // Execute the report using the existing method
+      // Log the BigQuery configuration being used
+      logFlow('SERVER', 'INFO', `Running report with BigQuery config:`, {
+        projectId: this.config.projectId || 'Not set',
+        datasetId: this.config.datasetId || 'Not set',
+        tableId: this.config.tableId || 'Not set'
+      });
+      
       return this.executeReportQuery(sessionId, translationResult);
     } catch (error: any) {
-      logFlow('SERVER', 'ERROR', `Error running report by ID: ${reportId}`, { error: error.message });
+      logFlow('SERVER', 'ERROR', `Error running report by ID: ${reportId}`, error);
       
       return {
         content: [{ type: 'text', text: `Error running report: ${formatError(error)}` }],
