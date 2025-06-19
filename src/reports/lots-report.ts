@@ -11,6 +11,7 @@
  */
 
 import { BigQueryClient } from '../services/bigquery-client.js';
+import { QueryExecutor } from '../services/query-executor.js';
 import { 
   LotsReportRecord, 
   ReportParameters, 
@@ -19,6 +20,7 @@ import {
 
 export class LotsReportGenerator {
   private bigQueryClient: BigQueryClient;
+  private queryExecutor: QueryExecutor;
 
   // Field metadata for natural language query mapping
   private static readonly FIELD_METADATA: FieldMetadata[] = [
@@ -106,6 +108,7 @@ export class LotsReportGenerator {
 
   constructor(bigQueryClient: BigQueryClient) {
     this.bigQueryClient = bigQueryClient;
+    this.queryExecutor = new QueryExecutor('bitwavie-reporting');
   }
 
   // ========================================================================
@@ -516,5 +519,99 @@ export class LotsReportGenerator {
     });
 
     return csvRows.join('\n');
+  }
+
+  /**
+   * Generate the Lots Report based on provided parameters
+   * 
+   * This is the standardized interface method used by the ReportRegistry
+   * 
+   * @param parameters Report parameters extracted from natural language query
+   * @returns Report generation result with data, columns, execution time, and SQL
+   */
+  async generateReport(parameters: Record<string, any>): Promise<{
+    data: any[];
+    columns: string[];
+    executionTime: number;
+    bytesProcessed: number;
+    sql: string;
+    metadata?: any;
+  }> {
+    try {
+      const startTime = Date.now();
+      
+      // Extract and validate parameters
+      const reportParams: ReportParameters = {
+        asOfDate: parameters.asOfDate || 'CURRENT_DATE()'
+      };
+      
+      // Extract filters
+      const filters: any = {};
+      if (parameters.assets) {
+        filters.assets = Array.isArray(parameters.assets) 
+          ? parameters.assets 
+          : parameters.assets.split(',').map((a: string) => a.trim());
+      }
+      
+      // Handle includeDisposed parameter
+      filters.includeDisposed = parameters.includeDisposed === true || 
+                              parameters.includeDisposed === 'true' || 
+                              false;
+      
+      // Generate SQL
+      const sql = this.buildLotsReportSQL(reportParams, filters);
+      
+      // Execute query
+      if (!this.queryExecutor) {
+        throw new Error('QueryExecutor not initialized');
+      }
+      
+      const executionResult = await this.queryExecutor.executeQuery(sql);
+      
+      if (!executionResult.success || !executionResult.data) {
+        throw new Error(`Query execution failed: ${executionResult.error?.message || 'Unknown error'}`);
+      }
+      
+      const rows = executionResult.data;
+      
+      // Transform results
+      const results = this.transformResults(rows);
+      
+      // Generate summary statistics
+      const summary = this.generateSummary(results);
+      
+      // Define columns based on the results
+      const columns = [
+        'lotId',
+        'asset',
+        'inventory',
+        'acquisitionDate',
+        'qty',
+        'costBasis',
+        'carryingValue',
+        'adjustedToValue',
+        'impairmentExpense',
+        'daysHeld',
+        'isLongTerm'
+      ];
+      
+      const executionTime = Date.now() - startTime;
+      
+      return {
+        data: results,
+        columns,
+        executionTime,
+        bytesProcessed: executionResult.metadata.bytesProcessed || 0,
+        sql,
+        metadata: {
+          summary,
+          totalRecords: results.length,
+          asOfDate: reportParams.asOfDate
+        }
+      };
+    } catch (error) {
+      console.error('Error generating Lots Report:', error);
+      throw error;
+    }
   }
 }

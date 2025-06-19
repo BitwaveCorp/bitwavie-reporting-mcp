@@ -53,6 +53,7 @@ export class NLQProcessor {
     this.llmTranslator = new LLMQueryTranslator(
       this.schemaManager,
       config.anthropicApiKey,
+      null as any, // ReportRegistry is not used in this context
       { maxRetries: config.maxRetries || 2 }
     );
     

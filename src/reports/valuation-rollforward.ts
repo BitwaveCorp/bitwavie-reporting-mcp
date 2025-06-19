@@ -17,6 +17,7 @@
  */
 
 import { BigQueryClient } from '../services/bigquery-client.js';
+import { QueryExecutor } from '../services/query-executor.js';
 import { 
   ValuationRollforwardRecord, 
   ReportParameters, 
@@ -25,6 +26,7 @@ import {
 
 export class ValuationRollforwardGenerator {
   private bigQueryClient: BigQueryClient;
+  private queryExecutor: QueryExecutor;
 
   // Field metadata for natural language query mapping
   private static readonly FIELD_METADATA: FieldMetadata[] = [
@@ -152,6 +154,7 @@ export class ValuationRollforwardGenerator {
 
   constructor(bigQueryClient: BigQueryClient) {
     this.bigQueryClient = bigQueryClient;
+    this.queryExecutor = new QueryExecutor('bitwavie-reporting');
   }
 
   // ========================================================================
@@ -793,5 +796,121 @@ export class ValuationRollforwardGenerator {
         .sort((a, b) => b.impairment_expense - a.impairment_expense)
         .slice(0, 10)
     };
+  }
+
+  /**
+   * Generate the Valuation Rollforward Report based on provided parameters
+   * 
+   * This is the standardized interface method used by the ReportRegistry
+   * 
+   * @param parameters Report parameters extracted from natural language query
+   * @returns Report generation result with data, columns, execution time, and SQL
+   */
+  async generateReport(parameters: Record<string, any>): Promise<{
+    data: any[];
+    columns: string[];
+    executionTime: number;
+    bytesProcessed: number;
+    sql: string;
+    metadata?: any;
+  }> {
+    try {
+      const startTime = Date.now();
+      
+      // Extract and validate parameters
+      const reportParams: ReportParameters = {
+        startDate: parameters.startDate,
+        endDate: parameters.endDate || 'CURRENT_DATE()'
+      };
+      
+      // Validate required parameters
+      if (!reportParams.startDate) {
+        throw new Error('Start date is required for Valuation Rollforward Report');
+      }
+      
+      // Extract filters
+      const filters: any = {};
+      if (parameters.assets) {
+        filters.assets = Array.isArray(parameters.assets) 
+          ? parameters.assets 
+          : parameters.assets.split(',').map((a: string) => a.trim());
+      }
+      
+      // Default grouping
+      const groupBy = ['asset'];
+      if (parameters.includeSubsidiary) {
+        groupBy.push('subsidiary');
+      }
+      
+      // Generate SQL
+      const sql = this.buildRollforwardSQL(reportParams, groupBy as any, filters);
+      
+      // Execute query
+      if (!this.queryExecutor) {
+        throw new Error('QueryExecutor not initialized');
+      }
+      
+      const executionResult = await this.queryExecutor.executeQuery(sql);
+      
+      if (!executionResult.success || !executionResult.data) {
+        throw new Error(`Query execution failed: ${executionResult.error?.message || 'Unknown error'}`);
+      }
+      
+      const rows = executionResult.data;
+      
+      // Transform results
+      const results = this.transformResults(rows);
+      
+      // Generate summary statistics
+      const summary = this.generateSummary(results);
+      
+      // Calculate performance metrics
+      const performanceMetrics = this.calculatePerformanceMetrics(results);
+      
+      // Identify significant movements
+      const significantMovements = this.identifySignificantMovements(results);
+      
+      // Define columns based on the results
+      const columns = [
+        'asset',
+        'starting_cost_basis',
+        'cost_basis_acquired',
+        'cost_basis_disposed',
+        'ending_cost_basis',
+        'period_shortterm_gainloss',
+        'period_longterm_gainloss',
+        'ending_unrealized',
+        'ending_carrying_value',
+        'ending_market_value',
+        'impairment_expense'
+      ];
+      
+      if (groupBy.includes('subsidiary')) {
+        columns.splice(1, 0, 'original_subsidiary');
+      }
+      
+      const executionTime = Date.now() - startTime;
+      
+      return {
+        data: results,
+        columns,
+        executionTime,
+        bytesProcessed: executionResult.metadata.bytesProcessed || 0,
+        sql,
+        metadata: {
+          summary,
+          performanceMetrics,
+          significantMovements,
+          totalRecords: results.length,
+          period: {
+            startDate: reportParams.startDate,
+            endDate: reportParams.endDate
+          }
+        }
+      };
+    } catch (error) {
+      console.error('Error generating Valuation Rollforward Report:', error);
+      throw error;
+    }
   }
 }

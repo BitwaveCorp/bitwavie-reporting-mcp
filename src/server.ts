@@ -3,10 +3,13 @@ import http from 'http';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { ReportParameters } from './types/actions-report';
+import { ReportRegistry } from './services/report-registry.js';
 
 // Import service modules 
 import { SchemaManager } from './services/schema-manager.js';
 import { LLMQueryTranslator } from './services/llm-query-translator.js';
+// Import the TranslationResult interface directly to ensure we have the latest version
+import type { TranslationResult } from './services/llm-query-translator.js';
 import { QueryConfirmationFormatter } from './services/query-confirmation-formatter.js';
 import { QueryExecutor } from './services/query-executor.js';
 import { ResultFormatter } from './services/result-formatter.js';
@@ -182,22 +185,6 @@ interface FormattedResultMetadata {
   visualizationHint?: string;
 }
 
-interface TranslationResult {
-  originalQuery: string;
-  interpretedQuery: string;
-  sql: string;
-  confidence: number;
-  components: QueryComponents;
-  requiresConfirmation: boolean;
-  alternatives?: Array<{ sql: string; description: string }>;
-  alternativeInterpretations: string[] | undefined;
-  error?: string;
-  confirmedMappings?: Record<string, string>;
-}
-
-// Import the ExecutionResult type from query-executor.ts
-import { ExecutionResult as QueryExecutorResult } from './services/query-executor';
-
 // Define our own ExecutionResult interface that includes both the original properties
 // and the additional properties needed by the formatter
 interface ExecutionResult {
@@ -261,7 +248,14 @@ interface AnalyzeDataRequest {
   previousResponse?: any;
 }
 
-interface AnalyzeDataResponse {
+export interface AnalyzeDataResponse {
+  data?: {
+    headers: string[];
+    rows: any[];
+    displayRows: number;
+    truncated: boolean;
+    exceedsDownloadLimit: boolean;
+  };
   content?: Array<{
     type: string;
     text?: string;
@@ -312,6 +306,7 @@ export class ReportingMCPServer {
   private resultFormatter: ResultFormatter | null = null;
   private bigQueryClient: BigQueryClient | null = null;
   private queryParser: QueryParser | null = null;
+  private reportRegistry: ReportRegistry | null = null;
   private httpServer: http.Server | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private sessionMaxAgeMs: number = 30 * 60 * 1000; // 30 minutes default
@@ -357,10 +352,27 @@ export class ReportingMCPServer {
 
       // Initialize LLMQueryTranslator if API key is provided
       if (this.config.anthropicApiKey) {
+        // Initialize ReportRegistry first if needed
+        if (!this.reportRegistry) {
+          // Initialize BigQueryClient if needed
+          if (!this.bigQueryClient) {
+            this.bigQueryClient = new BigQueryClient();
+            this.bigQueryClient.configure({
+              projectId: this.config.projectId,
+              datasetId: this.config.datasetId,
+              tableId: this.config.tableId
+            });
+          }
+          
+          // Initialize ReportRegistry
+          this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+        }
+        
         // No need to create Anthropic instance here, it's created inside LLMQueryTranslator
         this.llmQueryTranslator = new LLMQueryTranslator(
           this.schemaManager,
-          this.config.anthropicApiKey
+          this.config.anthropicApiKey,
+          this.reportRegistry // Now we're sure it's initialized
         );
       }
 
@@ -391,6 +403,18 @@ export class ReportingMCPServer {
         datasetId: this.config.datasetId,
         tableId: this.config.tableId
       });
+
+      // Initialize ReportRegistry
+      this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+      
+      // Re-initialize LLMQueryTranslator with ReportRegistry if needed
+      if (this.llmQueryTranslator && this.config.anthropicApiKey) {
+        this.llmQueryTranslator = new LLMQueryTranslator(
+          this.schemaManager as SchemaManager,
+          this.config.anthropicApiKey,
+          this.reportRegistry // Now we're sure it's initialized
+        );
+      }
 
       this.queryParser = new QueryParser();
 
@@ -887,6 +911,134 @@ export class ReportingMCPServer {
     }
   }
 
+  /**
+   * Execute a report query using the appropriate report generator
+   * @param sessionId Session ID
+   * @param translationResult Translation result containing report type and parameters
+   * @returns Formatted report response
+   */
+  private async executeReportQuery(
+    sessionId: string, 
+    translationResult: TranslationResult & {
+      reportType: string;
+      reportParameters?: Record<string, any>;
+      processingSteps?: Array<{step: string, description: string}>;
+    }
+  ): Promise<AnalyzeDataResponse> {
+    try {
+      if (!this.reportRegistry) {
+        throw new Error('Report registry not initialized');
+      }
+      
+      if (!translationResult.reportType) {
+        throw new Error('Report type not specified in translation result');
+      }
+      
+      // Get the report generator from the registry
+      const reportInfo = this.reportRegistry.getReportById(translationResult.reportType);
+      if (!reportInfo) {
+        throw new Error(`Report type not found: ${translationResult.reportType}`);
+      }
+      
+      const { metadata, generator } = reportInfo;
+      
+      // Check if the generator has the generateReport method
+      if (typeof generator.generateReport !== 'function') {
+        throw new Error(`Report generator for ${metadata.name} does not implement generateReport method`);
+      }
+      
+      // Generate the report
+      logFlow('SERVER', 'INFO', `Generating report: ${metadata.name}`, {
+        parameters: translationResult.reportParameters || {}
+      });
+      
+      const reportResult = await generator.generateReport(translationResult.reportParameters || {});
+      
+      // Create understanding message
+      const understandingMessage = `Generating ${metadata.name}`;
+      
+      // Create explanation of the report
+      const reportExplanation = `\n\n**Wavie generated the ${metadata.name}**\n\n${metadata.description}\n\nParameters: ${JSON.stringify(translationResult.reportParameters || {})}\n\nThe report was executed and formatted for display`;
+      
+      // Create processing steps
+      const processingSteps = [
+        {
+          type: 'report_detection',
+          message: `Detected request for ${metadata.name}`
+        },
+        {
+          type: 'parameter_extraction',
+          message: `Parameters: ${JSON.stringify(translationResult.reportParameters || {})}`
+        },
+        {
+          type: 'sql_generation',
+          message: reportResult.sql || 'SQL not available'
+        },
+        {
+          type: 'execution',
+          message: `Execution time: ${reportResult.executionTimeMs}ms, Bytes processed: ${reportResult.bytesProcessed || 'N/A'}`
+        }
+      ];
+      
+      // Use any processing steps provided by the translation result
+      if (translationResult.processingSteps && translationResult.processingSteps.length > 0) {
+        const formattedSteps = translationResult.processingSteps.map(step => ({
+          type: step.step,
+          message: step.description
+        }));
+        processingSteps.push(...formattedSteps);
+      }
+      
+      // Format the response
+      const content = [
+        { type: 'text', text: understandingMessage },
+        { 
+          type: 'table', 
+          table: {
+            headers: reportResult.columns || [],
+            rows: reportResult.data || []
+          }
+        },
+        { type: 'text', text: reportExplanation }
+      ];
+      
+      // Add summary if available
+      if (reportResult.summary) {
+        content.push({ type: 'text', text: reportResult.summary });
+      }
+      
+      // Create raw data for download
+      const rawData = {
+        headers: reportResult.columns || [],
+        rows: reportResult.data || [],
+        displayRows: Math.min((reportResult.data || []).length, 100),
+        truncated: (reportResult.data || []).length > 100,
+        exceedsDownloadLimit: (reportResult.data || []).length > 5000
+      };
+      
+      // Create the response object
+      const response: AnalyzeDataResponse = {
+        content,
+        rawData,
+        data: rawData, // Now properly typed
+        processingSteps: processingSteps as any,
+        originalQuery: translationResult.originalQuery,
+        translationResult
+      };
+      
+      return response;
+      
+    } catch (error: any) {
+      logFlow('SERVER', 'ERROR', 'Error executing report query:', error);
+      
+      return {
+        content: [{ type: 'text', text: `Error generating report: ${formatError(error)}` }],
+        error: formatError(error),
+        originalQuery: translationResult.originalQuery
+      };
+    }
+  }
+
   private async processEnhancedNLQ(sessionId: string, query: string): Promise<AnalyzeDataResponse> {
     console.log(`[processEnhancedNLQ] Processing enhanced NLQ for session ${sessionId}, query: ${query}`);
     
@@ -904,6 +1056,16 @@ export class ReportingMCPServer {
       if (sessionData) {
         sessionData.translationResult = translationResult;
         sessionData.query = query;
+      }
+      
+      // Check if this is a report query
+      if (translationResult.isReportQuery && translationResult.reportType) {
+        logFlow('SERVER', 'INFO', `Detected report query: ${translationResult.reportType}`);
+        return this.executeReportQuery(sessionId, translationResult as TranslationResult & {
+          reportType: string;
+          reportParameters?: Record<string, any>;
+          processingSteps?: Array<{step: string, description: string}>;
+        });
       }
       
       // Create understanding message based on the interpreted query
@@ -965,6 +1127,15 @@ export class ReportingMCPServer {
           })
         }
       ];
+      
+      // Use any processing steps provided by the translation result
+      if (translationResult.processingSteps && translationResult.processingSteps.length > 0) {
+        const formattedSteps = translationResult.processingSteps.map(step => ({
+          type: step.step,
+          message: step.description
+        }));
+        processingSteps.push(...formattedSteps);
+      }
       
       console.log('Processing steps created:', JSON.stringify(processingSteps, null, 2));
       

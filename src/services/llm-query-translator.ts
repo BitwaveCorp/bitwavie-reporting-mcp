@@ -9,6 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logFlow } from '../utils/logging.js';
 import { SchemaManager } from './schema-manager.js';
+import { ReportRegistry } from './report-registry.js';
 
 // Types
 export interface TranslationConfig {
@@ -48,19 +49,25 @@ export interface TranslationResult {
   requiresConfirmation: boolean;
   confidence: number; // 0-1
   alternativeInterpretations: string[] | undefined;
+  isReportQuery?: boolean;
+  reportType?: string | undefined;
+  reportParameters?: Record<string, any> | undefined;
+  processingSteps?: Array<{step: string, description: string}> | undefined;
 }
 
 export class LLMQueryTranslator {
   private anthropic: Anthropic | null = null;
   private schemaManager: SchemaManager;
+  private reportRegistry: ReportRegistry;
   private config: TranslationConfig = {
     maxRetries: 2,
     temperatureFilter: 0.2,
     temperatureAggregation: 0.2
   };
   
-  constructor(schemaManager: SchemaManager, anthropicApiKey: string, config?: TranslationConfig) {
+  constructor(schemaManager: SchemaManager, anthropicApiKey: string, reportRegistry: ReportRegistry, config?: TranslationConfig) {
     this.schemaManager = schemaManager;
+    this.reportRegistry = reportRegistry;
     
     // Initialize Anthropic client
     this.anthropic = new Anthropic({
@@ -99,6 +106,104 @@ export class LLMQueryTranslator {
   }
   
   /**
+   * Detect if a query is requesting a predefined report and extract parameters
+   * 
+   * @param query The natural language query
+   * @returns Detection result with report type and parameters if it's a report query
+   */
+  async detectReportQuery(query: string): Promise<{
+    isReportQuery: boolean;
+    reportType?: string;
+    reportParameters?: Record<string, any>;
+    confidence: number;
+    suggestedReports?: Array<{name: string, confidence: number}>;
+  }> {
+    try {
+      if (!this.anthropic) {
+        throw new Error('Anthropic client not initialized');
+      }
+
+      // Get all available reports from registry
+      const availableReports = this.reportRegistry.getAllReports();
+      
+      if (availableReports.length === 0) {
+        return { isReportQuery: false, confidence: 0 };
+      }
+      
+      // Format reports for the prompt
+      const reportsInfo = availableReports.map((report: any) => {
+        return `- ${report.name}: ${report.description}\n   Keywords: ${report.keywords.join(', ')}\n   Required parameters: ${report.requiredParameters.join(', ')}\n   Optional parameters: ${report.optionalParameters.join(', ')}`;
+      }).join('\n\n');
+      
+      logFlow('LLM_TRANSLATOR', 'INFO', 'Detecting if query is for a predefined report', { query });
+      
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-opus-20240229',
+        max_tokens: 1000,
+        temperature: 0.2,
+        messages: [
+          {
+            role: 'user',
+            content: `You are an expert in natural language understanding for financial reporting systems. Your task is to determine if the user's query is requesting one of our predefined reports, and if so, extract the parameters needed for that report.
+
+Available predefined reports:
+${reportsInfo}
+
+User query: "${query}"
+
+Analyze the query and respond in JSON format with the following structure:
+{
+  "isReportQuery": boolean, // true if the query is requesting one of the predefined reports
+  "reportType": string or null, // the exact name of the requested report, or null if not a report query
+  "confidence": number, // 0.0-1.0 indicating confidence in the detection
+  "parameters": { // extracted parameters for the report
+    // Include all parameters you can extract from the query
+    // Use appropriate data types (string, number, boolean, array)
+  },
+  "suggestedReports": [ // only include if isReportQuery is false but query is related to available reports
+    {
+      "name": string, // name of a suggested report
+      "confidence": number // 0.0-1.0 indicating relevance
+    }
+  ]
+}
+
+Only return valid JSON. Do not include any explanations or additional text outside the JSON structure.`
+          }
+        ]
+      });
+      
+      const responseText = this.getResponseText(response);
+      
+      try {
+        const result = JSON.parse(responseText);
+        
+        logFlow('LLM_TRANSLATOR', 'INFO', 'Report detection result', { 
+          isReportQuery: result.isReportQuery,
+          reportType: result.reportType,
+          confidence: result.confidence,
+          parameters: result.parameters,
+          suggestedReports: result.suggestedReports
+        });
+        
+        return {
+          isReportQuery: result.isReportQuery,
+          reportType: result.reportType || undefined,
+          reportParameters: result.parameters || {},
+          confidence: result.confidence,
+          suggestedReports: result.suggestedReports
+        };
+      } catch (error) {
+        logFlow('LLM_TRANSLATOR', 'ERROR', 'Failed to parse report detection response', { error, responseText });
+        return { isReportQuery: false, confidence: 0 };
+      }
+    } catch (error) {
+      logFlow('LLM_TRANSLATOR', 'ERROR', 'Error detecting report query', { error });
+      return { isReportQuery: false, confidence: 0 };
+    }
+  }
+  
+  /**
    * Translate a natural language query into SQL
    * @param query The natural language query
    * @param previousContext Optional previous conversation context
@@ -115,19 +220,54 @@ export class LLMQueryTranslator {
     logFlow('LLM_TRANSLATOR', 'ENTRY', 'Translating query', { query, hasPreviousContext: !!previousContext });
     
     try {
-      // First, analyze the query to understand filter operations (population definition)
+      // Step 0: Check if this is a report query
+      const reportDetection = await this.detectReportQuery(query);
+      
+      // If this is a high-confidence report query, return early with report info
+      if (reportDetection.isReportQuery && reportDetection.confidence > 0.8 && reportDetection.reportType) {
+        const processingSteps = [
+          {
+            step: 'Report Detection',
+            description: `Detected request for predefined report: ${reportDetection.reportType}`
+          },
+          {
+            step: 'Parameter Extraction',
+            description: `Extracted parameters: ${JSON.stringify(reportDetection.reportParameters)}`
+          }
+        ];
+        
+        return {
+          originalQuery: query,
+          interpretedQuery: `Generate ${reportDetection.reportType} with parameters: ${JSON.stringify(reportDetection.reportParameters)}`,
+          sql: '', // No SQL for report queries, will be generated by the report generator
+          components: {
+            filterOperations: { description: '', sqlClause: '' },
+            aggregationOperations: { description: '', sqlClause: '' },
+            groupByOperations: { description: '', sqlClause: '' },
+            orderByOperations: { description: '', sqlClause: '' },
+            limitOperations: { description: '', sqlClause: '' }
+          },
+          requiresConfirmation: false,
+          confidence: reportDetection.confidence,
+          alternativeInterpretations: undefined,
+          isReportQuery: true,
+          reportType: reportDetection.reportType,
+          reportParameters: reportDetection.reportParameters,
+          processingSteps
+        };
+      }
+      
+      // Step 1: Analyze filter operations (population definition)
       const filterComponents = await this.analyzeFilterOperations(query);
       
-      // Then, analyze for aggregation/selection operations (results generation)
+      // Step 2: Analyze aggregation/selection operations (results generation)
       const aggregationComponents = await this.analyzeAggregationOperations(query, filterComponents);
       
-      // Generate the complete SQL query
+      // Step 3: Generate the complete SQL query
       const sqlResult = await this.generateSQL(query, filterComponents, aggregationComponents);
       
       // Determine if confirmation is required based on confidence
-      // Using a very high threshold (0.99) to ensure most queries require confirmation
-      // This can be gradually reduced over time as the system improves
-      const requiresConfirmation = sqlResult.confidence < 0.99;
+      const requiresConfirmation = sqlResult.confidence < 0.7;
       
       // Construct the final translation result
       const result: TranslationResult = {
@@ -158,8 +298,25 @@ export class LLMQueryTranslator {
         },
         requiresConfirmation,
         confidence: sqlResult.confidence,
-        alternativeInterpretations: sqlResult.alternativeInterpretations
+        alternativeInterpretations: sqlResult.alternativeInterpretations,
+        processingSteps: [
+          { step: 'Query Analysis', description: 'Analyzing natural language query' },
+          { step: 'Filter Operations', description: filterComponents.description },
+          { step: 'Aggregation Operations', description: aggregationComponents.aggregationDescription },
+          { step: 'SQL Generation', description: 'Generating optimized SQL query' }
+        ]
       };
+      
+      // If we have suggested reports, include them in the result
+      if (reportDetection.suggestedReports && reportDetection.suggestedReports.length > 0) {
+        const highConfidenceSuggestion = reportDetection.suggestedReports.find(r => r.confidence > 0.7);
+        if (highConfidenceSuggestion) {
+          result.processingSteps?.push({
+            step: 'Report Suggestion',
+            description: `You might be interested in the ${highConfidenceSuggestion.name} report which is related to your query.`
+          });
+        }
+      }
       
       logFlow('LLM_TRANSLATOR', 'EXIT', 'Query translation completed', {
         confidence: result.confidence,

@@ -10,6 +10,7 @@
  */
 
 import { BigQueryClient } from '../services/bigquery-client.js';
+import { QueryExecutor } from '../services/query-executor.js';
 import { 
   InventoryBalanceRecord, 
   ReportParameters, 
@@ -18,6 +19,7 @@ import {
 
 export class InventoryBalanceGenerator {
   private bigQueryClient: BigQueryClient;
+  private queryExecutor: QueryExecutor;
 
   // Field metadata for natural language query mapping
   private static readonly FIELD_METADATA: FieldMetadata[] = [
@@ -115,6 +117,7 @@ export class InventoryBalanceGenerator {
 
   constructor(bigQueryClient: BigQueryClient) {
     this.bigQueryClient = bigQueryClient;
+    this.queryExecutor = new QueryExecutor('bitwavie-reporting');
   }
 
   // ========================================================================
@@ -876,6 +879,7 @@ export class InventoryBalanceGenerator {
       inventoryDiversification: number;
     };
   } {
+
     const totalValue = records.reduce((sum, record) => sum + Math.abs(record.carryingValue), 0);
 
     // Asset concentration analysis
@@ -928,5 +932,104 @@ export class InventoryBalanceGenerator {
         inventoryDiversification: inventoryEntries.length
       }
     };
+  }
+
+  /**
+   * Generate the Inventory Balance Report based on provided parameters
+   * 
+   * This is the standardized interface method used by the ReportRegistry
+   * 
+   * @param parameters Report parameters extracted from natural language query
+   * @returns Report generation result with data, columns, execution time, and SQL
+   */
+  async generateReport(parameters: Record<string, any>): Promise<{
+    data: any[];
+    columns: string[];
+    executionTime: number;
+    bytesProcessed: number;
+    sql: string;
+    metadata?: any;
+  }> {
+    try {
+      const startTime = Date.now();
+      
+      // Extract and validate parameters
+      const reportParams: ReportParameters = {
+        asOfDate: parameters.asOfDate || 'CURRENT_DATE()'
+      };
+      
+      // Extract filters
+      const filters: any = {};
+      if (parameters.assets) {
+        filters.assets = Array.isArray(parameters.assets) 
+          ? parameters.assets 
+          : parameters.assets.split(',').map((a: string) => a.trim());
+      }
+      
+      if (parameters.inventory) {
+        filters.inventories = Array.isArray(parameters.inventory) 
+          ? parameters.inventory 
+          : parameters.inventory.split(',').map((i: string) => i.trim());
+      }
+      
+      // Default grouping
+      const groupBy = ['asset', 'inventory'];
+      if (parameters.includeSubsidiary) {
+        groupBy.push('subsidiary');
+      }
+      
+      // Generate SQL
+      const sql = this.buildInventoryBalanceSQL(reportParams, groupBy as any, filters);
+      
+      // Execute query
+      if (!this.queryExecutor) {
+        throw new Error('QueryExecutor not initialized');
+      }
+      
+      const executionResult = await this.queryExecutor.executeQuery(sql);
+      
+      if (!executionResult.success || !executionResult.data) {
+        throw new Error(`Query execution failed: ${executionResult.error?.message || 'Unknown error'}`);
+      }
+      
+      const rows = executionResult.data;
+      
+      // Transform results
+      const results = this.transformResults(rows);
+      
+      // Generate summary statistics
+      const summary = this.generateSummary(results);
+      
+      // Define columns based on the results
+      const columns = [
+        'asset',
+        'inventory',
+        'qty',
+        'costBasis',
+        'carryingValue',
+        'impairmentExpense'
+      ];
+      
+      if (groupBy.includes('subsidiary')) {
+        columns.splice(2, 0, 'subsidiaryId');
+      }
+      
+      const executionTime = Date.now() - startTime;
+      
+      return {
+        data: results,
+        columns,
+        executionTime,
+        bytesProcessed: executionResult.metadata.bytesProcessed || 0,
+        sql,
+        metadata: {
+          summary,
+          totalRecords: results.length
+        }
+      };
+    } catch (error) {
+      console.error('Error generating Inventory Balance Report:', error);
+      throw error;
+    }
   }
 }
