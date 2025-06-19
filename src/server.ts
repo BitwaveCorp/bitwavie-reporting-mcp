@@ -402,6 +402,7 @@ export class ReportingMCPServer {
   }
 
   private registerHandlers(): void {
+    console.log('999999999 REGISTER - Registering API handlers');
     // Set up middleware for parsing JSON requests
     this.server.use(express.json());
 
@@ -452,13 +453,15 @@ export class ReportingMCPServer {
           success: true,
           content: result.content,
           needsConfirmation: result.needsConfirmation || false,
-          // Explicitly include rawData if it exists
-          ...(result.rawData && { rawData: result.rawData }),
+          // ALWAYS include the raw data directly
+          rawData: result.rawData,
           // Include other optional fields
           ...(result.sql && { sql: result.sql }),
           ...(result.originalQuery && { originalQuery: result.originalQuery }),
           ...(result.processingSteps && { processingSteps: result.processingSteps }),
-          ...(result.translationResult && { translationResult: result.translationResult })
+          ...(result.translationResult && { translationResult: result.translationResult }),
+          // Add data field for compatibility
+          data: result.rawData
         };
         
         // Log the final response structure
