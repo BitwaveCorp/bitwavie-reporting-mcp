@@ -436,11 +436,36 @@ export class ReportingMCPServer {
           });
         }
 
-        // Create a success response that includes all fields from result
+        // Extract raw data if it exists and log it for debugging
+        if (result.rawData) {
+          console.log('302 - API analyzeData rawData exists with structure:', {
+            headers: result.rawData.headers?.length,
+            rows: result.rawData.rows?.length,
+            firstRow: result.rawData.rows?.[0]
+          });
+        } else {
+          console.log('302 - API analyzeData NO rawData found in result');
+        }
+        
+        // Create a success response that explicitly includes all fields from result
         const successResponse = {
           success: true,
-          ...result
+          content: result.content,
+          needsConfirmation: result.needsConfirmation || false,
+          // Explicitly include rawData if it exists
+          ...(result.rawData && { rawData: result.rawData }),
+          // Include other optional fields
+          ...(result.sql && { sql: result.sql }),
+          ...(result.originalQuery && { originalQuery: result.originalQuery }),
+          ...(result.processingSteps && { processingSteps: result.processingSteps }),
+          ...(result.translationResult && { translationResult: result.translationResult })
         };
+        
+        // Log the final response structure
+        console.log('303 - API analyzeData final response structure:', {
+          hasRawData: !!successResponse.rawData,
+          responseKeys: Object.keys(successResponse)
+        });
         
         // Send the response with all fields including rawData
         res.json(successResponse);
