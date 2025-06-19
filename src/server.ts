@@ -399,9 +399,30 @@ export class ReportingMCPServer {
 
         // Process the request
         const result = await this.handleAnalyzeData(validatedData as AnalyzeDataRequest);
+        
+        // Log the result structure before sending
+        console.log('300 - API analyzeData response structure:', {
+          hasRawData: !!result.rawData,
+          responseKeys: Object.keys(result)
+        });
+        
+        // If rawData exists in result, log a preview
+        if (result.rawData) {
+          console.log('301 - API analyzeData rawData preview:', {
+            headers: result.rawData.headers,
+            rowCount: result.rawData.rows?.length || 0,
+            firstRow: result.rawData.rows?.[0]
+          });
+        }
 
-        // Send the response
-        res.json(result);
+        // Create a success response that includes all fields from result
+        const successResponse = {
+          success: true,
+          ...result
+        };
+        
+        // Send the response with all fields including rawData
+        res.json(successResponse);
       } catch (error) {
         // Handle validation or processing errors
         res.status(400).json({ 
