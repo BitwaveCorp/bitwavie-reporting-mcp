@@ -73,7 +73,7 @@ export class LLMQueryTranslator {
     this.anthropic = new Anthropic({
       apiKey: anthropicApiKey,
       defaultHeaders: {
-        'anthropic-project': anthropicProjectId || '01978ae6-d1e8-7540-a713-8d0c8a06a78f'
+        'anthropic-project': anthropicProjectId || 'bitwave-solutions'
       }
     });
     

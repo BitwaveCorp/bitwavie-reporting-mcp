@@ -154,8 +154,11 @@ export class ValuationRollforwardGenerator {
 
   constructor(bigQueryClient: BigQueryClient) {
     this.bigQueryClient = bigQueryClient;
-    // Use the project ID from your configuration
-    this.queryExecutor = new QueryExecutor('01978ae6-d1e8-7540-a713-8d0c8a06a78f');
+    
+    // Use project ID from environment variable, with fallback to hardcoded value
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
+    console.log(`ValuationRollforwardGenerator: Initializing QueryExecutor with project ID: ${projectId}`);
+    this.queryExecutor = new QueryExecutor(projectId);
   }
 
   // ========================================================================
