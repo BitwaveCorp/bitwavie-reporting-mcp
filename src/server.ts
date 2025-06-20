@@ -1028,7 +1028,7 @@ export class ReportingMCPServer {
              `${report.description}\n\n` +
              `**ID:** \`${report.id}\`\n\n` +
              `**Run with:** \`/${report.id}\` or \`/run ${report.name}\`\n\n` +
-             `**Example Prompt:** "${examplePrompt}"\n`;
+             `**Example Prompt:** "${examplePrompt}" <a href="#" class="run-example" data-command="${examplePrompt}">Click here to run</a>\n`;
     }).join('\n---\n\n');
     
     const content = [
