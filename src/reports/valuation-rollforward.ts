@@ -849,6 +849,16 @@ export class ValuationRollforwardGenerator {
         endDate: parameters.endDate || 'CURRENT_DATE()'
       };
       
+      // PARAMETER_REVIEW 2: Log parameters in generateReport
+      console.log('PARAMETER_REVIEW 2 - ValuationRollforwardGenerator.generateReport:', {
+        originalParameters: parameters,
+        reportParams,
+        hasStartDate: parameters.startDate ? 'YES' : 'NO',
+        startDateValue: parameters.startDate,
+        hasEndDate: parameters.endDate ? 'YES' : 'NO',
+        endDateValue: parameters.endDate
+      });
+      
       // Validate required parameters
       if (!reportParams.startDate) {
         throw new Error('Start date is required for Valuation Rollforward Report');

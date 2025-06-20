@@ -492,6 +492,14 @@ export class BigQueryClient {
   async executeReportQuery(sql: string, parameters: ReportParameters): Promise<any[]> {
     logFlow('REPORT_QUERY', 'ENTRY', 'Executing report query', { parameters });
     
+    // PARAMETER_REVIEW 6: Log parameters at the start of executeReportQuery
+    console.log('PARAMETER_REVIEW 6 - BigQueryClient.executeReportQuery:', {
+      parameters,
+      hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+      asOfDateValue: parameters.asOfDate,
+      sqlContainsAsOfDate: sql.includes('@asOfDate') ? 'YES' : 'NO'
+    });
+    
     // Log all available parameters for debugging
     console.log('PARAMETER_CHECKER - Available parameters:', {
       runId: parameters.runId,
@@ -745,6 +753,12 @@ export class BigQueryClient {
       throw new Error('BigQuery client not initialized');
     }
 
+    // PARAMETER_REVIEW 8: Log SQL in executeQuery
+    console.log('PARAMETER_REVIEW 8 - BigQueryClient.executeQuery:', {
+      sqlContainsAsOfDate: sql.includes('@asOfDate') ? 'YES' : 'NO',
+      sqlPreview: sql.substring(0, 300) + (sql.length > 300 ? '...' : '')
+    });
+
     logFlow('EXECUTE_QUERY', 'ENTRY', 'Executing SQL query', { 
       sqlLength: sql.length,
       sqlPreview: sql.substring(0, 100) + (sql.length > 100 ? '...' : '')
@@ -778,6 +792,14 @@ export class BigQueryClient {
   }
 
   private replaceParameters(sql: string, parameters: ReportParameters): string {
+    // PARAMETER_REVIEW 7: Log parameters in replaceParameters
+    console.log('PARAMETER_REVIEW 7 - BigQueryClient.replaceParameters:', {
+      parameters,
+      hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+      asOfDateValue: parameters.asOfDate,
+      sqlContainsAsOfDate: sql.includes('@asOfDate') ? 'YES' : 'NO'
+    });
+    
     // Log all available parameters for debugging
     console.log('PARAMETER_CHECKER - Available parameters:', {
       runId: parameters.runId,

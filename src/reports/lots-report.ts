@@ -131,11 +131,25 @@ export class LotsReportGenerator {
     
     console.log('🔄 Generating Lots Report...', { parameters, filters });
     
+    // PARAMETER_REVIEW 3: Log parameters at the start of generate method
+    console.log('PARAMETER_REVIEW 3 - LotsReportGenerator.generate (before defaults):', {
+      parameters,
+      hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+      asOfDateValue: parameters.asOfDate
+    });
+    
     // Apply default values for missing parameters
     if (!parameters.asOfDate && !parameters.asOfSEC) {
       parameters.asOfDate = '2050-12-31';
       console.log('LotsReportGenerator: Using default asOfDate: 2050-12-31');
     }
+    
+    // PARAMETER_REVIEW 3.1: Log parameters after defaults are applied
+    console.log('PARAMETER_REVIEW 3.1 - LotsReportGenerator.generate (after defaults):', {
+      parameters,
+      hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+      asOfDateValue: parameters.asOfDate
+    });
     
     try {
       // Build the SQL query
@@ -165,6 +179,13 @@ export class LotsReportGenerator {
     parameters: ReportParameters, 
     filters?: any
   ): string {
+    
+    // PARAMETER_REVIEW 4: Log parameters when building SQL
+    console.log('PARAMETER_REVIEW 4 - LotsReportGenerator.buildLotsReportSQL:', {
+      parameters,
+      hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+      asOfDateValue: parameters.asOfDate
+    });
     
     const whereConditions = this.buildWhereConditions(parameters, filters);
     const havingConditions = this.buildHavingConditions(filters);
@@ -230,6 +251,13 @@ export class LotsReportGenerator {
 
   private buildWhereConditions(parameters: ReportParameters, filters?: any): string {
     const conditions: string[] = [];
+    
+    // PARAMETER_REVIEW 5: Log parameters in buildWhereConditions
+    console.log('PARAMETER_REVIEW 5 - LotsReportGenerator.buildWhereConditions:', {
+      parameters,
+      hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+      asOfDateValue: parameters.asOfDate
+    });
 
     // Only add runId condition if it's provided in parameters
     if (parameters.runId) {
@@ -567,6 +595,14 @@ export class LotsReportGenerator {
       const reportParams: ReportParameters = {
         asOfDate: parameters.asOfDate || 'CURRENT_DATE()'
       };
+      
+      // PARAMETER_REVIEW 2: Log parameters in generateReport
+      console.log('PARAMETER_REVIEW 2 - LotsReportGenerator.generateReport:', {
+        originalParameters: parameters,
+        reportParams,
+        hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+        asOfDateValue: parameters.asOfDate
+      });
       
       // Extract filters
       const filters: any = {};

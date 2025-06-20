@@ -983,6 +983,14 @@ export class InventoryBalanceGenerator {
         asOfDate: parameters.asOfDate || 'CURRENT_DATE()'
       };
       
+      // PARAMETER_REVIEW 2: Log parameters in generateReport
+      console.log('PARAMETER_REVIEW 2 - InventoryBalanceGenerator.generateReport:', {
+        originalParameters: parameters,
+        reportParams,
+        hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+        asOfDateValue: parameters.asOfDate
+      });
+      
       // Extract filters
       const filters: any = {};
       if (parameters.assets) {

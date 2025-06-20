@@ -1502,6 +1502,15 @@ export class ReportingMCPServer {
       
       // Ensure parameters is an object even if undefined
       const reportParameters = translationResult.reportParameters || {};
+      
+      // PARAMETER_REVIEW 1: Log parameters before calling generateReport
+      console.log('PARAMETER_REVIEW 1 - Server executeReportQuery:', {
+        reportId,
+        reportParameters,
+        hasAsOfDate: reportParameters.asOfDate ? 'YES' : 'NO',
+        asOfDateValue: reportParameters.asOfDate
+      });
+      
       const reportResult = await generator.generateReport(reportParameters);
       
       // Create understanding message
