@@ -1530,7 +1530,7 @@ export class ReportingMCPServer {
       const rowCount = (reportResult.data || []).length;
       const isLimitApplied = reportParameters.limit && rowCount >= reportParameters.limit;
       if (isLimitApplied) {
-        reportExplanation += `\n\n**Note:** Results limited to ${reportParameters.limit} rows. The actual dataset may contain more rows.`;
+        reportExplanation += `\n\n**Note:** Results limited to the first ${reportParameters.limit} rows. The actual dataset may contain more rows.`;
       }
       
       // Create processing steps
