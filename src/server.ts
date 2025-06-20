@@ -1524,7 +1524,14 @@ export class ReportingMCPServer {
       const understandingMessage = `Generating ${metadata.name}`;
       
       // Create explanation of the report
-      const reportExplanation = `\n\n**Wavie generated the ${metadata.name}**\n\n${metadata.description}\n\nParameters: ${JSON.stringify(translationResult.reportParameters || {})}\n\nThe report was executed and formatted for display`;
+      let reportExplanation = `\n\n**Wavie generated the ${metadata.name}**\n\n${metadata.description}\n\nParameters: ${JSON.stringify(translationResult.reportParameters || {})}\n\nThe report was executed and formatted for display`;
+      
+      // Add notification if data was limited by the row limit
+      const rowCount = (reportResult.data || []).length;
+      const isLimitApplied = reportParameters.limit && rowCount >= reportParameters.limit;
+      if (isLimitApplied) {
+        reportExplanation += `\n\n**Note:** Results limited to ${reportParameters.limit} rows. The actual dataset may contain more rows.`;
+      }
       
       // Create processing steps
       const processingSteps = [
@@ -1577,9 +1584,11 @@ export class ReportingMCPServer {
       const rawData = {
         headers: reportResult.columns || [],
         rows: reportResult.data || [],
-        displayRows: Math.min((reportResult.data || []).length, 100),
-        truncated: (reportResult.data || []).length > 100,
-        exceedsDownloadLimit: (reportResult.data || []).length > 5000
+        displayRows: Math.min(rowCount, 100),
+        truncated: rowCount > 100,
+        exceedsDownloadLimit: rowCount > 5000,
+        isLimitApplied: isLimitApplied,
+        appliedLimit: isLimitApplied ? reportParameters.limit : undefined
       };
       
       // Create the response object
