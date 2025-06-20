@@ -268,8 +268,12 @@ export class InventoryBalanceGenerator {
   private buildWhereConditions(parameters: ReportParameters, filters?: any): string {
     const conditions: string[] = [];
 
-    // Required parameters
-    conditions.push('t.runId = @runId');
+    // Only add runId condition if it's provided in parameters
+    if (parameters.runId) {
+      conditions.push('t.runId = @runId');
+    } else {
+      console.log('InventoryBalanceGenerator: No runId provided, skipping runId filter');
+    }
     
     if (parameters.orgId) {
       conditions.push('t.orgId = @orgId');
@@ -279,7 +283,9 @@ export class InventoryBalanceGenerator {
     if (parameters.asOfSEC) {
       conditions.push('t.timestampSEC <= @asOfSEC');
     } else if (parameters.asOfDate) {
-      conditions.push('t.timestampSEC <= @asOfSEC');
+      // Convert asOfDate to end of day (11:59:59 PM UTC) in Unix timestamp format
+      conditions.push("t.timestampSEC <= UNIX_SECONDS(TIMESTAMP(DATE(@asOfDate) || ' 23:59:59'))");
+      console.log(`InventoryBalanceGenerator: Using asOfDate filter for end of day: ${parameters.asOfDate}`);
     }
 
     // Asset filters

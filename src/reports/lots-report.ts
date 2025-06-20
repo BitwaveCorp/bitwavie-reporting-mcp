@@ -238,7 +238,9 @@ export class LotsReportGenerator {
     if (parameters.asOfSEC) {
       conditions.push(`timestampSEC <= @asOfSEC`);
     } else if (parameters.asOfDate) {
-      conditions.push(`timestampSEC <= @asOfSEC`);
+      // Convert asOfDate to end of day (11:59:59 PM UTC) in Unix timestamp format
+      conditions.push(`timestampSEC <= UNIX_SECONDS(TIMESTAMP(DATE(@asOfDate) || ' 23:59:59'))`);
+      console.log(`LotsReportGenerator: Using asOfDate filter for end of day: ${parameters.asOfDate}`);
     }
 
     // Asset filters

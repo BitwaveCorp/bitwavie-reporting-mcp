@@ -223,11 +223,16 @@ export class ValuationRollforwardGenerator {
     
     console.log(`ValuationRollforwardGenerator: Using table: ${fullTablePath}`);
 
+    // Check if runId is provided in parameters
+    const runIdFilter = parameters.runId ? 'runId = @runId' : '1=1'; // Use 1=1 as a no-op filter if runId not provided
+    
+    console.log(`ValuationRollforwardGenerator: Using runId filter: ${runIdFilter}`);
+    
     return `
       WITH isAvgCost AS (
         SELECT (COUNTIF(undatedGainLoss IS NOT NULL) > 0 OR COUNTIF(lotId IS NULL) > 0) AS isAvgCost
         FROM \`${fullTablePath}\`
-        WHERE runId = @runId 
+        WHERE ${runIdFilter} 
           AND timestampSEC <= UNIX_SECONDS(TIMESTAMP(DATE(@endDate))) 
           AND action = 'sell' 
           AND status = 'complete'
@@ -240,7 +245,7 @@ export class ValuationRollforwardGenerator {
           COALESCE(wallet, 'DEFAULT') as original_wallet
         FROM \`${fullTablePath}\` gla
         CROSS JOIN isAvgCost isc
-        WHERE runId = @runId ${filters ? this.buildAssetFilter(filters) : ''}
+        WHERE ${runIdFilter} ${filters ? this.buildAssetFilter(filters) : ''}
       ),
       startingbalance AS (
         -- Calculate starting balances before period
@@ -403,7 +408,10 @@ export class ValuationRollforwardGenerator {
   private buildWhereConditions(parameters: ReportParameters, filters?: any): string {
     const conditions: string[] = [];
 
-    conditions.push(`runId = @runId`);
+    // Only add runId condition if it's provided in parameters
+    if (parameters.runId) {
+      conditions.push(`runId = @runId`);
+    }
     
     if (parameters.orgId) {
       conditions.push(`orgId = @orgId`);

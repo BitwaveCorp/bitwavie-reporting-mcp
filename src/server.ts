@@ -1177,6 +1177,12 @@ export class ReportingMCPServer {
             name: 'endDate',
             description: 'Optional end date for the report period (YYYY-MM-DD). Defaults to current date if not specified.',
             type: 'date'
+          },
+
+          {
+            name: 'runId',
+            description: 'Optional run ID to filter results',
+            type: 'string'
           }
         ];
       
@@ -1188,14 +1194,33 @@ export class ReportingMCPServer {
             type: 'string'
           },
           {
-            name: 'startDate',
-            description: 'Optional start date to filter results (YYYY-MM-DD)',
+            name: 'asOfDate',
+            description: 'Optional as-of date to filter results (YYYY-MM-DD)',
             type: 'date'
           },
           {
-            name: 'endDate',
-            description: 'Optional end date to filter results (YYYY-MM-DD)',
+            name: 'asOfSEC',
+            description: 'Optional as-of timestamp in seconds since epoch',
+            type: 'number'
+          }
+        ];
+      
+      case 'inventory-balance':
+        return [
+          {
+            name: 'runId',
+            description: 'Optional run ID to filter results',
+            type: 'string'
+          },
+          {
+            name: 'asOfDate',
+            description: 'Optional as-of date to filter results (YYYY-MM-DD)',
             type: 'date'
+          },
+          {
+            name: 'asOfSEC',
+            description: 'Optional as-of timestamp in seconds since epoch',
+            type: 'number'
           }
         ];
         
