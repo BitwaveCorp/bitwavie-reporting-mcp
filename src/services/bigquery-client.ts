@@ -491,6 +491,21 @@ export class BigQueryClient {
    */
   async executeReportQuery(sql: string, parameters: ReportParameters): Promise<any[]> {
     logFlow('REPORT_QUERY', 'ENTRY', 'Executing report query', { parameters });
+    
+    // Log all available parameters for debugging
+    console.log('PARAMETER_CHECKER - Available parameters:', {
+      runId: parameters.runId,
+      orgId: parameters.orgId,
+      asOfDate: parameters.asOfDate,
+      asOfSEC: parameters.asOfSEC,
+      startDate: parameters.startDate,
+      endDate: parameters.endDate
+    });
+    
+    // Check for parameter placeholders in SQL
+    const placeholders = sql.match(/@[a-zA-Z0-9_]+/g) || [];
+    console.log('PARAMETER_CHECKER - SQL parameter placeholders:', placeholders);
+    
     const parameterizedSQL = this.replaceParameters(sql, parameters);
     logFlow('SQL_GENERATION', 'INFO', 'Generated parameterized SQL', { sql: parameterizedSQL });
     
@@ -763,6 +778,20 @@ export class BigQueryClient {
   }
 
   private replaceParameters(sql: string, parameters: ReportParameters): string {
+    // Log all available parameters for debugging
+    console.log('PARAMETER_CHECKER - Available parameters:', {
+      runId: parameters.runId,
+      orgId: parameters.orgId,
+      asOfDate: parameters.asOfDate,
+      asOfSEC: parameters.asOfSEC,
+      startDate: parameters.startDate,
+      endDate: parameters.endDate
+    });
+    
+    // Check for parameter placeholders in SQL
+    const placeholders = sql.match(/@[a-zA-Z0-9_]+/g) || [];
+    console.log('PARAMETER_CHECKER - SQL parameter placeholders:', placeholders);
+    
     let parameterizedSQL = sql;
     
     // Replace parameter placeholders
@@ -776,9 +805,18 @@ export class BigQueryClient {
     
     if (parameters.asOfSEC) {
       parameterizedSQL = parameterizedSQL.replace(/@asOfSEC/g, parameters.asOfSEC.toString());
-    } else if (parameters.asOfDate) {
-      const asOfSEC = Math.floor(new Date(parameters.asOfDate + ' 23:59:59').getTime() / 1000);
-      parameterizedSQL = parameterizedSQL.replace(/@asOfSEC/g, asOfSEC.toString());
+    } 
+    
+    if (parameters.asOfDate) {
+      // Replace @asOfDate directly in the SQL
+      parameterizedSQL = parameterizedSQL.replace(/@asOfDate/g, `'${parameters.asOfDate}'`);
+      
+      // Also handle @asOfSEC if it's used in the query but not provided in parameters
+      if (!parameters.asOfSEC && parameterizedSQL.includes('@asOfSEC')) {
+        const asOfSEC = Math.floor(new Date(parameters.asOfDate + ' 23:59:59').getTime() / 1000);
+        parameterizedSQL = parameterizedSQL.replace(/@asOfSEC/g, asOfSEC.toString());
+        console.log(`Converted asOfDate ${parameters.asOfDate} to asOfSEC ${asOfSEC}`);
+      }
     }
     
     if (parameters.startDate) {

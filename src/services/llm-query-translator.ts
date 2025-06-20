@@ -189,13 +189,15 @@ User query: "${query}"
 
 IMPORTANT INSTRUCTIONS:
 1. Identify which report the user is requesting based on the available reports.
-2. Extract any parameters mentioned in the query, even if they're expressed in natural language.
-3. For date parameters:
+2. CRITICAL: If the query contains parameters (like startDate, endDate, asOfDate, runId), use these to help identify which report is being requested. For example, if the query mentions "startDate" and "endDate", it likely refers to the valuation-rollforward report.
+3. Extract any parameters mentioned in the query, even if they're expressed in natural language.
+4. For date parameters:
    - Convert natural language date references (e.g., "January", "last quarter", "Q1", "this year") to proper date formats (YYYY-MM-DD).
    - When a range is mentioned (e.g., "January through March"), extract both start and end dates.
    - Use the current year if no year is specified.
-4. Match parameters to the required parameters for the identified report.
-5. If the report requires parameters that weren't provided, note them as missing.
+5. Match parameters to the required parameters for the identified report.
+6. If the report requires parameters that weren't provided, note them as missing.
+7. Pay special attention to the parameter patterns - each report has specific parameter requirements that can help identify it.
 
 Analyze the query and respond in JSON format with the following structure:
 {
