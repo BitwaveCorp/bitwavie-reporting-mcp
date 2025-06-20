@@ -625,7 +625,16 @@ export class LotsReportGenerator {
         throw new Error('QueryExecutor not initialized');
       }
       
-      const executionResult = await this.queryExecutor.executeQuery(sql);
+      // PARAMETER_REVIEW 3.2: Log parameters before query execution
+      console.log('PARAMETER_REVIEW 3.2 - LotsReportGenerator before executeQuery:', {
+        hasParameters: true,
+        parameters: reportParams,
+        hasAsOfDate: reportParams.asOfDate ? 'YES' : 'NO',
+        asOfDateValue: reportParams.asOfDate
+      });
+      
+      // Pass the parameters to the query executor
+      const executionResult = await this.queryExecutor.executeQuery(sql, reportParams);
       
       if (!executionResult.success || !executionResult.data) {
         throw new Error(`Query execution failed: ${executionResult.error?.message || 'Unknown error'}`);

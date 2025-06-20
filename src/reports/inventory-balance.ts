@@ -1019,7 +1019,16 @@ export class InventoryBalanceGenerator {
         throw new Error('QueryExecutor not initialized');
       }
       
-      const executionResult = await this.queryExecutor.executeQuery(sql);
+      // PARAMETER_REVIEW 2.1: Log parameters before query execution
+      console.log('PARAMETER_REVIEW 2.1 - InventoryBalanceGenerator before executeQuery:', {
+        hasParameters: true,
+        parameters: reportParams,
+        hasAsOfDate: reportParams.asOfDate ? 'YES' : 'NO',
+        asOfDateValue: reportParams.asOfDate
+      });
+      
+      // Pass the parameters to the query executor
+      const executionResult = await this.queryExecutor.executeQuery(sql, reportParams);
       
       if (!executionResult.success || !executionResult.data) {
         throw new Error(`Query execution failed: ${executionResult.error?.message || 'Unknown error'}`);
