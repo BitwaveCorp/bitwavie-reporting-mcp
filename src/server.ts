@@ -1007,11 +1007,28 @@ export class ReportingMCPServer {
     }
     
     const reportItems = reports.map(report => {
+      // Create example prompts for each report type with proper command format
+      let examplePrompt = '';
+      
+      switch(report.id) {
+        case 'inventory-balance':
+          examplePrompt = '/inventory-balance asOfDate=2025-06-15';
+          break;
+        case 'valuation-rollforward':
+          examplePrompt = '/valuation-rollforward startDate=2025-01-01 endDate=2025-03-31';
+          break;
+        case 'lots-report':
+          examplePrompt = '/lots-report asOfDate=2025-05-31';
+          break;
+        default:
+          examplePrompt = `/${report.id}`;
+      }
+      
       return `### ${report.name}\n` +
              `${report.description}\n\n` +
              `**ID:** \`${report.id}\`\n\n` +
              `**Run with:** \`/${report.id}\` or \`/run ${report.name}\`\n\n` +
-             `**Keywords:** ${report.keywords.join(', ')}\n`;
+             `**Example Prompt:** "${examplePrompt}"\n`;
     }).join('\n---\n\n');
     
     const content = [
