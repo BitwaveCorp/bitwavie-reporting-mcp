@@ -117,7 +117,8 @@ export class InventoryBalanceGenerator {
 
   constructor(bigQueryClient: BigQueryClient) {
     this.bigQueryClient = bigQueryClient;
-    this.queryExecutor = new QueryExecutor('bitwavie-reporting');
+    // Use the project ID from your configuration
+    this.queryExecutor = new QueryExecutor('01978ae6-d1e8-7540-a713-8d0c8a06a78f');
   }
 
   // ========================================================================
