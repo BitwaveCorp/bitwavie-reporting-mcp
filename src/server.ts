@@ -1415,9 +1415,27 @@ export class ReportingMCPServer {
                   const reportMetadata = report as any;
                   const reportName = reportMetadata.metadata?.name || suggestion.name;
                   const reportDesc = reportMetadata.metadata?.description || '';
+                  
+                  // Create example prompt based on report type
+                  let examplePrompt = '';
+                  switch(report.id) {
+                    case 'inventory-balance':
+                      examplePrompt = '/inventory-balance asOfDate=2025-06-15';
+                      break;
+                    case 'valuation-rollforward':
+                      examplePrompt = '/valuation-rollforward startDate=2025-01-01 endDate=2025-03-31';
+                      break;
+                    case 'lots-report':
+                      examplePrompt = '/lots-report asOfDate=2025-05-31';
+                      break;
+                    default:
+                      examplePrompt = `/${report.id}`;
+                  }
+                  
                   return `- **${reportName}** (${Math.round(suggestion.confidence * 100)}% match)
   ${reportDesc}
-  Run with: \`/${report.id}\``;
+  Run with: \`/${report.id}\`
+  Example Prompt: "${examplePrompt}"`;
                 }
               }
             }
