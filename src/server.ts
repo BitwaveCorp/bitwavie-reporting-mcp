@@ -1504,6 +1504,12 @@ export class ReportingMCPServer {
       // Ensure parameters is an object even if undefined
       const reportParameters = translationResult.reportParameters || {};
       
+      // Apply default row limit if not specified
+      if (reportParameters.limit === undefined) {
+        reportParameters.limit = 5000; // Default to 5000 rows max
+        logFlow('SERVER', 'INFO', `Applied default row limit of 5000 rows to report: ${metadata.name}`);
+      }
+      
       // PARAMETER_REVIEW 1: Log parameters before calling generateReport
       console.log('PARAMETER_REVIEW 1 - Server executeReportQuery:', {
         reportId,

@@ -166,17 +166,21 @@ export interface InventoryBalanceRecord {
 // QUERY & RESPONSE TYPES
 // ============================================================================
 
+export interface ReportParameters {
+  asOfDate?: string;
+  asOfSEC?: string;
+  startDate?: string;
+  endDate?: string;
+  runId?: string;
+  orgId?: string;
+  limit?: number; // Maximum number of rows to return (default: 5000)
+}
+
 export interface QueryRequest {
   query: string;
   reportType?: 'actions' | 'lots' | 'rollforward' | 'inventory';
   filters?: Record<string, any>;
-  parameters?: {
-    runId?: string;
-    orgId?: string;
-    startDate?: string;
-    endDate?: string;
-    asOfDate?: string;
-  };
+  parameters?: ReportParameters;
 }
 
 export interface ColumnMapping {
@@ -502,11 +506,4 @@ export interface DataSource {
   config: BigQueryConfig | { filePath: string };
 }
 
-export interface ReportParameters {
-  runId?: string; // Made optional to support NLQ queries without filtering by runId
-  orgId?: string;
-  startDate?: string;
-  endDate?: string;
-  asOfDate?: string;
-  asOfSEC?: number;
-}
+// ReportParameters interface is now defined above

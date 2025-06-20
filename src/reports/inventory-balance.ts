@@ -233,6 +233,7 @@ export class InventoryBalanceGenerator {
       ${groupByColumns.groupBy}
       ${havingConditions}
       ${groupByColumns.orderBy}
+      ${parameters.limit ? `LIMIT ${parameters.limit}` : ''}
     `.trim();
   }
 

@@ -246,6 +246,7 @@ export class LotsReportGenerator {
       ${havingConditions}
       -- Use lotAcquisitionTimestampSEC which is included in the GROUP BY clause
       ORDER BY lotAcquisitionTimestampSEC DESC, lotId DESC
+      ${parameters.limit ? `LIMIT ${parameters.limit}` : ''}
     `.trim();
   }
 

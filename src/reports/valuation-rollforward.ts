@@ -352,6 +352,7 @@ export class ValuationRollforwardGenerator {
       FULL OUTER JOIN endingbalance eb ON COALESCE(sb.asset, inc.asset, dec.asset) = eb.asset ${groupByColumns.joins}
       WHERE COALESCE(sb.asset, inc.asset, dec.asset, eb.asset) IS NOT NULL
       ORDER BY asset ASC${groupByColumns.orderBy}
+      ${parameters.limit ? `LIMIT ${parameters.limit}` : ''}
     `.trim();
   }
 
