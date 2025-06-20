@@ -917,23 +917,33 @@ export class ValuationRollforwardGenerator {
       // Identify significant movements
       const significantMovements = this.identifySignificantMovements(results);
       
-      // Define columns based on the results
+      // Define columns based on the results - match all columns in the SQL query
       const columns = [
         'asset',
         'starting_cost_basis',
         'cost_basis_acquired',
         'cost_basis_disposed',
         'ending_cost_basis',
+        'starting_impairment_in_inventory',
+        'impairment_expense',
+        'impairment_disposed',
+        'impairment_reversal',
+        'ending_impairment_in_inventory',
+        'ending_carrying_value',
+        'starting_unrealized',
+        'gaap_fair_value_adjust_up',
+        'gaap_fair_value_adjust_down',
+        'IFRS_revaluation_adjust_up',
+        'IFRS_revaluation_adjust_down',
+        'ending_unrealized',
+        'ending_market_value',
         'period_shortterm_gainloss',
         'period_longterm_gainloss',
-        'ending_unrealized',
-        'ending_carrying_value',
-        'ending_market_value',
-        'impairment_expense'
+        'period_undated_gainloss'
       ];
       
       if (groupBy.includes('subsidiary')) {
-        columns.splice(1, 0, 'original_subsidiary');
+        columns.splice(1, 0, 'subsidiary');
       }
       
       const executionTime = Date.now() - startTime;
