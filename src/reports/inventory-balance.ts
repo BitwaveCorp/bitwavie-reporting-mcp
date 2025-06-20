@@ -142,6 +142,12 @@ export class InventoryBalanceGenerator {
     
     console.log('🔄 Generating Inventory Balance Report...', { parameters, groupBy, filters });
     
+    // Apply default values for missing parameters
+    if (!parameters.asOfDate && !parameters.asOfSEC) {
+      parameters.asOfDate = '2050-12-31';
+      console.log('InventoryBalanceGenerator: Using default asOfDate: 2050-12-31');
+    }
+    
     try {
       // Build the SQL query
       const sql = this.buildInventoryBalanceSQL(parameters, groupBy, filters);

@@ -131,6 +131,12 @@ export class LotsReportGenerator {
     
     console.log('🔄 Generating Lots Report...', { parameters, filters });
     
+    // Apply default values for missing parameters
+    if (!parameters.asOfDate && !parameters.asOfSEC) {
+      parameters.asOfDate = '2050-12-31';
+      console.log('LotsReportGenerator: Using default asOfDate: 2050-12-31');
+    }
+    
     try {
       // Build the SQL query
       const sql = this.buildLotsReportSQL(parameters, filters);

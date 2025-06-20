@@ -118,7 +118,7 @@ export class LLMQueryTranslator {
     id: string;
     name: string;
     description: string;
-    requiredParameters: Array<{name: string, description: string, type: string}>;
+    requiredParameters: Array<{name: string, description: string, type: string, required: boolean}>;
   }>): Promise<{
     isReportQuery: boolean;
     reportType?: string;
@@ -142,11 +142,20 @@ export class LLMQueryTranslator {
         
         // Format the provided reports for the prompt
         reportsInfo = reportContext.map(report => {
-          const requiredParamInfo = report.requiredParameters
+          // Separate required and optional parameters
+          const requiredParams = report.requiredParameters.filter(param => param.required);
+          const optionalParams = report.requiredParameters.filter(param => !param.required);
+          
+          const requiredParamInfo = requiredParams
             .map(param => `${param.name} (${param.type}): ${param.description}`)
             .join('\n   ');
             
-          return `- ${report.name} (ID: ${report.id}): ${report.description}\n   Required parameters:\n   ${requiredParamInfo || 'None'}`;
+          const optionalParamInfo = optionalParams
+            .map(param => `${param.name} (${param.type}): ${param.description}`)
+            .join('\n   ');
+            
+          return `- ${report.name} (ID: ${report.id}): ${report.description}
+   Required parameters:\n   ${requiredParamInfo || 'None'}\n   Optional parameters:\n   ${optionalParamInfo || 'None'}`;
         }).join('\n\n');
       } else {
         // Get all available reports from registry

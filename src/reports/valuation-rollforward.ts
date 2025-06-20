@@ -177,9 +177,15 @@ export class ValuationRollforwardGenerator {
     
     console.log('🔄 Generating Valuation Rollforward Report...', { parameters, groupBy, filters });
     
-    // Validate required parameters
-    if (!parameters.startDate || !parameters.endDate) {
-      throw new Error('Valuation Rollforward requires both startDate and endDate parameters');
+    // Apply default values for missing parameters
+    if (!parameters.startDate) {
+      parameters.startDate = '1970-01-01';
+      console.log('ValuationRollforwardGenerator: Using default startDate: 1970-01-01');
+    }
+    
+    if (!parameters.endDate) {
+      parameters.endDate = '2050-12-31';
+      console.log('ValuationRollforwardGenerator: Using default endDate: 2050-12-31');
     }
     
     try {

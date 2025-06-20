@@ -1159,11 +1159,11 @@ export class ReportingMCPServer {
    * @returns The report response or suggestions
    */
   /**
-   * Get required parameters for a specific report
+   * Get parameters for a specific report
    * @param reportId The report ID
-   * @returns Array of required parameter names with descriptions
+   * @returns Array of parameter definitions with name, description, type, and required flag
    */
-  private getReportRequiredParameters(reportId: string): Array<{name: string, description: string, type: string}> {
+  private getReportRequiredParameters(reportId: string): Array<{name: string, description: string, type: string, required: boolean}> {
     // Define required parameters for each report type
     switch (reportId) {
       case 'valuation-rollforward':
@@ -1171,18 +1171,21 @@ export class ReportingMCPServer {
           {
             name: 'startDate',
             description: 'Start date for the report period (YYYY-MM-DD)',
-            type: 'date'
+            type: 'date',
+            required: true
           },
           {
             name: 'endDate',
-            description: 'Optional end date for the report period (YYYY-MM-DD). Defaults to current date if not specified.',
-            type: 'date'
+            description: 'End date for the report period (YYYY-MM-DD)',
+            type: 'date',
+            required: true
           },
 
           {
             name: 'runId',
             description: 'Optional run ID to filter results',
-            type: 'string'
+            type: 'string',
+            required: false
           }
         ];
       
@@ -1191,17 +1194,20 @@ export class ReportingMCPServer {
           {
             name: 'runId',
             description: 'Optional run ID to filter results',
-            type: 'string'
+            type: 'string',
+            required: false
           },
           {
             name: 'asOfDate',
             description: 'Optional as-of date to filter results (YYYY-MM-DD)',
-            type: 'date'
+            type: 'date',
+            required: false
           },
           {
             name: 'asOfSEC',
             description: 'Optional as-of timestamp in seconds since epoch',
-            type: 'number'
+            type: 'number',
+            required: false
           }
         ];
       
@@ -1210,17 +1216,20 @@ export class ReportingMCPServer {
           {
             name: 'runId',
             description: 'Optional run ID to filter results',
-            type: 'string'
+            type: 'string',
+            required: false
           },
           {
             name: 'asOfDate',
             description: 'Optional as-of date to filter results (YYYY-MM-DD)',
-            type: 'date'
+            type: 'date',
+            required: false
           },
           {
             name: 'asOfSEC',
             description: 'Optional as-of timestamp in seconds since epoch',
-            type: 'number'
+            type: 'number',
+            required: false
           }
         ];
         
