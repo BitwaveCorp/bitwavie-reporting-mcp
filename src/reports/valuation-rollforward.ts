@@ -214,11 +214,19 @@ export class ValuationRollforwardGenerator {
     
     const groupByColumns = this.buildGroupByColumns(groupBy);
     const whereConditions = this.buildWhereConditions(parameters, filters);
+    
+    // Get table reference from environment variables with fallbacks
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
+    const datasetId = process.env.BIGQUERY_DATASET_ID || '0_Bitwavie_MCP';
+    const tableId = process.env.BIGQUERY_TABLE_ID || '2622d4df5b2a15ec811e_gl_actions';
+    const fullTablePath = `${projectId}.${datasetId}.${tableId}`;
+    
+    console.log(`ValuationRollforwardGenerator: Using table: ${fullTablePath}`);
 
     return `
       WITH isAvgCost AS (
         SELECT (COUNTIF(undatedGainLoss IS NOT NULL) > 0 OR COUNTIF(lotId IS NULL) > 0) AS isAvgCost
-        FROM \`{ACTIONS_REPORT_TABLE}\`
+        FROM \`${fullTablePath}\`
         WHERE runId = @runId 
           AND timestampSEC <= UNIX_SECONDS(TIMESTAMP(DATE(@endDate))) 
           AND action = 'sell' 
@@ -230,7 +238,7 @@ export class ValuationRollforwardGenerator {
           COALESCE(subsidiaryId, 'DEFAULT') as original_subsidiary,
           COALESCE(inventory, 'DEFAULT') as original_inventory,
           COALESCE(wallet, 'DEFAULT') as original_wallet
-        FROM \`{ACTIONS_REPORT_TABLE}\` gla
+        FROM \`${fullTablePath}\` gla
         CROSS JOIN isAvgCost isc
         WHERE runId = @runId ${filters ? this.buildAssetFilter(filters) : ''}
       ),

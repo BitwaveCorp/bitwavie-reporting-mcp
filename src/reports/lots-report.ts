@@ -162,6 +162,14 @@ export class LotsReportGenerator {
     
     const whereConditions = this.buildWhereConditions(parameters, filters);
     const havingConditions = this.buildHavingConditions(filters);
+    
+    // Get table reference from environment variables with fallbacks
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
+    const datasetId = process.env.BIGQUERY_DATASET_ID || '0_Bitwavie_MCP';
+    const tableId = process.env.BIGQUERY_TABLE_ID || '2622d4df5b2a15ec811e_gl_actions';
+    const fullTablePath = `${projectId}.${datasetId}.${tableId}`;
+    
+    console.log(`LotsReportGenerator: Using table: ${fullTablePath}`);
 
     return `
       WITH actions AS (
@@ -178,7 +186,7 @@ export class LotsReportGenerator {
           IFNULL(CAST(revaluationAdjustmentDownward AS BIGNUMERIC), 0) AS revaluationAdjustmentDownward,
           IFNULL(CAST(impairmentExpenseDisposed AS BIGNUMERIC), 0) AS impairmentExpenseDisposed,
           txnId, eventId
-        FROM \`{ACTIONS_REPORT_TABLE}\`
+        FROM \`${fullTablePath}\`
         ${whereConditions}
       ),
       lot_to_txn as (

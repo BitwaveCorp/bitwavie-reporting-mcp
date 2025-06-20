@@ -175,11 +175,19 @@ export class InventoryBalanceGenerator {
     const groupByColumns = this.buildGroupByClause(groupBy);
     const whereConditions = this.buildWhereConditions(parameters, filters);
     const havingConditions = this.buildHavingConditions(filters);
+    
+    // Get table reference from environment variables with fallbacks
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
+    const datasetId = process.env.BIGQUERY_DATASET_ID || '0_Bitwavie_MCP';
+    const tableId = process.env.BIGQUERY_TABLE_ID || '2622d4df5b2a15ec811e_gl_actions';
+    const fullTablePath = `${projectId}.${datasetId}.${tableId}`;
+    
+    console.log(`InventoryBalanceGenerator: Using table: ${fullTablePath}`);
 
     return `
       WITH deduplicated_actions AS (
         SELECT AS VALUE ANY_VALUE(t)
-        FROM \`{ACTIONS_REPORT_TABLE}\` AS t
+        FROM \`${fullTablePath}\` AS t
         ${whereConditions}
         GROUP BY t.eventId, t.lotId, t.inventory
       ),
