@@ -65,13 +65,16 @@ export class LLMQueryTranslator {
     temperatureAggregation: 0.2
   };
   
-  constructor(schemaManager: SchemaManager, anthropicApiKey: string, reportRegistry: ReportRegistry, config?: TranslationConfig) {
+  constructor(schemaManager: SchemaManager, anthropicApiKey: string, reportRegistry: ReportRegistry, config?: TranslationConfig, anthropicProjectId?: string) {
     this.schemaManager = schemaManager;
     this.reportRegistry = reportRegistry;
     
     // Initialize Anthropic client
     this.anthropic = new Anthropic({
-      apiKey: anthropicApiKey
+      apiKey: anthropicApiKey,
+      defaultHeaders: {
+        'anthropic-project': anthropicProjectId || '01978ae6-d1e8-7540-a713-8d0c8a06a78f'
+      }
     });
     
     // Apply custom config if provided

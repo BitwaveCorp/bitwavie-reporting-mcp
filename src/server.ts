@@ -148,6 +148,7 @@ interface ReportingServerConfig {
   datasetId: string;
   tableId: string;
   anthropicApiKey?: string;
+  anthropicProjectId?: string;
   useEnhancedNLQ?: boolean;
   includeSqlInResponses?: boolean;
   schemaRefreshIntervalMs?: number;
@@ -372,7 +373,9 @@ export class ReportingMCPServer {
         this.llmQueryTranslator = new LLMQueryTranslator(
           this.schemaManager,
           this.config.anthropicApiKey,
-          this.reportRegistry // Now we're sure it's initialized
+          this.reportRegistry, // Now we're sure it's initialized
+          undefined, // Default config
+          this.config.anthropicProjectId || 'bitwavie-reporting' // Add project ID
         );
       }
 
@@ -412,7 +415,9 @@ export class ReportingMCPServer {
         this.llmQueryTranslator = new LLMQueryTranslator(
           this.schemaManager as SchemaManager,
           this.config.anthropicApiKey,
-          this.reportRegistry // Now we're sure it's initialized
+          this.reportRegistry, // Now we're sure it's initialized
+          undefined, // Default config
+          this.config.anthropicProjectId || 'bitwavie-reporting' // Add project ID
         );
       }
 
