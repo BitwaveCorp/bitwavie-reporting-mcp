@@ -111,10 +111,16 @@ export class LLMQueryTranslator {
    * @param query The natural language query
    * @returns Detection result with report type and parameters if it's a report query
    */
-  async detectReportQuery(query: string): Promise<{
+  async detectReportQuery(query: string, reportContext?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    requiredParameters: Array<{name: string, description: string, type: string}>;
+  }>): Promise<{
     isReportQuery: boolean;
     reportType?: string;
     reportParameters?: Record<string, any>;
+    missingRequiredParameters?: string[];
     confidence: number;
     suggestedReports?: Array<{name: string, confidence: number}>;
   }> {
@@ -123,17 +129,35 @@ export class LLMQueryTranslator {
         throw new Error('Anthropic client not initialized');
       }
 
-      // Get all available reports from registry
-      const availableReports = this.reportRegistry.getAllReports();
+      // Use provided report context or get from registry
+      let availableReports;
+      let reportsInfo;
       
-      if (availableReports.length === 0) {
-        return { isReportQuery: false, confidence: 0 };
+      if (reportContext) {
+        // Use the provided report context
+        availableReports = reportContext;
+        
+        // Format the provided reports for the prompt
+        reportsInfo = reportContext.map(report => {
+          const requiredParamInfo = report.requiredParameters
+            .map(param => `${param.name} (${param.type}): ${param.description}`)
+            .join('\n   ');
+            
+          return `- ${report.name} (ID: ${report.id}): ${report.description}\n   Required parameters:\n   ${requiredParamInfo || 'None'}`;
+        }).join('\n\n');
+      } else {
+        // Get all available reports from registry
+        availableReports = this.reportRegistry.getAllReports();
+        
+        if (availableReports.length === 0) {
+          return { isReportQuery: false, confidence: 0 };
+        }
+        
+        // Format reports for the prompt
+        reportsInfo = availableReports.map((report: any) => {
+          return `- ${report.name}: ${report.description}\n   Keywords: ${report.keywords?.join(', ') || 'None'}\n   Required parameters: ${report.requiredParameters?.join(', ') || 'None'}\n   Optional parameters: ${report.optionalParameters?.join(', ') || 'None'}`;
+        }).join('\n\n');
       }
-      
-      // Format reports for the prompt
-      const reportsInfo = availableReports.map((report: any) => {
-        return `- ${report.name}: ${report.description}\n   Keywords: ${report.keywords.join(', ')}\n   Required parameters: ${report.requiredParameters.join(', ')}\n   Optional parameters: ${report.optionalParameters.join(', ')}`;
-      }).join('\n\n');
       
       logFlow('LLM_TRANSLATOR', 'INFO', 'Detecting if query is for a predefined report', { query });
       
@@ -151,15 +175,30 @@ ${reportsInfo}
 
 User query: "${query}"
 
+IMPORTANT INSTRUCTIONS:
+1. Identify which report the user is requesting based on the available reports.
+2. Extract any parameters mentioned in the query, even if they're expressed in natural language.
+3. For date parameters:
+   - Convert natural language date references (e.g., "January", "last quarter", "Q1", "this year") to proper date formats (YYYY-MM-DD).
+   - When a range is mentioned (e.g., "January through March"), extract both start and end dates.
+   - Use the current year if no year is specified.
+4. Match parameters to the required parameters for the identified report.
+5. If the report requires parameters that weren't provided, note them as missing.
+
 Analyze the query and respond in JSON format with the following structure:
 {
   "isReportQuery": boolean, // true if the query is requesting one of the predefined reports
-  "reportType": string or null, // the exact name of the requested report, or null if not a report query
+  "reportType": string, // the ID of the requested report, or null if not a report query
   "confidence": number, // 0.0-1.0 indicating confidence in the detection
   "parameters": { // extracted parameters for the report
     // Include all parameters you can extract from the query
+    // Convert natural language dates to YYYY-MM-DD format
     // Use appropriate data types (string, number, boolean, array)
   },
+  "missingRequiredParameters": [ // required parameters that weren't provided in the query
+    "paramName1",
+    "paramName2"
+  ],
   "suggestedReports": [ // only include if isReportQuery is false but query is related to available reports
     {
       "name": string, // name of a suggested report
@@ -190,6 +229,7 @@ Only return valid JSON. Do not include any explanations or additional text outsi
           isReportQuery: result.isReportQuery,
           reportType: result.reportType || undefined,
           reportParameters: result.parameters || {},
+          missingRequiredParameters: result.missingRequiredParameters || [],
           confidence: result.confidence,
           suggestedReports: result.suggestedReports
         };

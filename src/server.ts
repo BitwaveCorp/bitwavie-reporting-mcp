@@ -1153,6 +1153,56 @@ export class ReportingMCPServer {
    * @param commandText The command text (without the slash)
    * @returns The report response or suggestions
    */
+  /**
+   * Get required parameters for a specific report
+   * @param reportId The report ID
+   * @returns Array of required parameter names with descriptions
+   */
+  private getReportRequiredParameters(reportId: string): Array<{name: string, description: string, type: string}> {
+    // Define required parameters for each report type
+    switch (reportId) {
+      case 'valuation-rollforward':
+        return [
+          {
+            name: 'startDate',
+            description: 'Start date for the report period (YYYY-MM-DD)',
+            type: 'date'
+          },
+          {
+            name: 'endDate',
+            description: 'Optional end date for the report period (YYYY-MM-DD). Defaults to current date if not specified.',
+            type: 'date'
+          }
+        ];
+      
+      case 'lots-report':
+        return [
+          {
+            name: 'runId',
+            description: 'Optional run ID to filter results',
+            type: 'string'
+          },
+          {
+            name: 'startDate',
+            description: 'Optional start date to filter results (YYYY-MM-DD)',
+            type: 'date'
+          },
+          {
+            name: 'endDate',
+            description: 'Optional end date to filter results (YYYY-MM-DD)',
+            type: 'date'
+          }
+        ];
+        
+      // Add cases for other reports with required parameters
+      // case 'other-report':
+      //   return [...parameters];
+        
+      default:
+        return [];
+    }
+  }
+  
   private async matchReportCommand(sessionId: string, commandText: string): Promise<AnalyzeDataResponse> {
     if (!this.llmQueryTranslator) {
       return {
@@ -1162,11 +1212,100 @@ export class ReportingMCPServer {
     }
     
     try {
-      // Use the report detection method with a higher confidence threshold
-      const reportDetection = await this.llmQueryTranslator.detectReportQuery(commandText);
+      // Initialize report registry if not already done
+      if (!this.reportRegistry) {
+        if (!this.bigQueryClient) {
+          this.bigQueryClient = new BigQueryClient();
+          this.bigQueryClient.configure({
+            projectId: this.config.projectId || '',
+            datasetId: this.config.datasetId || '',
+            tableId: this.config.tableId || ''
+          });
+        }
+        this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+      }
       
-      // If we have a high confidence match, run the report
+      // Get all available reports from registry to provide context to the LLM
+      const availableReports = this.reportRegistry.getAllReports();
+      
+      // Create context for the LLM with report information and required parameters
+      const reportContext = availableReports.map(report => ({
+        id: report.id,
+        name: report.name,
+        description: report.description || '',
+        requiredParameters: this.getReportRequiredParameters(report.id)
+      }));
+      
+      logFlow('SERVER', 'INFO', 'Available reports for LLM context:', reportContext);
+      
+      // Use the report detection method with the registry context
+      const reportDetection = await this.llmQueryTranslator.detectReportQuery(commandText, reportContext);
+      
+      // If we have a high confidence match, check for missing parameters
       if (reportDetection.isReportQuery && reportDetection.reportType && reportDetection.confidence > 0.6) {
+        // Check if there are missing required parameters
+        if (reportDetection.missingRequiredParameters && reportDetection.missingRequiredParameters.length > 0) {
+          // Get report info for better user instructions
+          const reportInfo = this.reportRegistry.getReportById(reportDetection.reportType);
+          if (!reportInfo) {
+            return {
+              content: [{ type: 'text', text: `Report not found: ${reportDetection.reportType}` }],
+              error: `Report not found: ${reportDetection.reportType}`
+            };
+          }
+          
+          // Create user-friendly instructions for the missing parameters
+          const missingParams = reportDetection.missingRequiredParameters;
+          let instructions = '';
+          
+          // Get parameter descriptions from our registry
+          const paramDetails = this.getReportRequiredParameters(reportDetection.reportType)
+            .filter(p => missingParams.includes(p.name));
+          
+          // Create parameter-specific instructions
+          if (reportDetection.reportType === 'valuation-rollforward') {
+            instructions = `To run the Valuation Rollforward Report, please provide the following missing parameters:\n\n`;
+            
+            if (missingParams.includes('startDate')) {
+              instructions += `- Start date in YYYY-MM-DD format (e.g., startDate=2023-01-01)\n`;
+            }
+            
+            if (missingParams.includes('endDate')) {
+              instructions += `- End date in YYYY-MM-DD format (optional, e.g., endDate=2023-03-31)\n`;
+            }
+            
+            instructions += `\nExample: /${reportDetection.reportType} startDate=2023-01-01\n`;
+            if (reportDetection.reportParameters && Object.keys(reportDetection.reportParameters).length > 0) {
+              instructions += `\nI've already understood these parameters from your request:\n`;
+              Object.entries(reportDetection.reportParameters).forEach(([key, value]) => {
+                instructions += `- ${key}: ${value}\n`;
+              });
+            }
+          } else {
+            // Generic instructions for other report types
+            const reportName = reportDetection.reportType;
+            instructions = `To run the ${reportName}, please provide the following missing parameters:\n\n`;
+            
+            paramDetails.forEach(param => {
+              instructions += `- ${param.name} (${param.type}): ${param.description}\n`;
+            });
+            
+            instructions += `\nExample: /${reportDetection.reportType} ${missingParams[0]}=value\n`;
+            
+            if (reportDetection.reportParameters && Object.keys(reportDetection.reportParameters).length > 0) {
+              instructions += `\nI've already understood these parameters from your request:\n`;
+              Object.entries(reportDetection.reportParameters).forEach(([key, value]) => {
+                instructions += `- ${key}: ${value}\n`;
+              });
+            }
+          }
+          
+          return {
+            content: [{ type: 'text', text: instructions }]
+          };
+        }
+        
+        // All required parameters are present, run the report
         const translationResult: TranslationResult & {
           reportType: string;
           reportParameters?: Record<string, any> | undefined;
@@ -1200,6 +1339,8 @@ export class ReportingMCPServer {
           ]
         };
         
+        // No need for additional parameter instructions here
+        
         return this.executeReportQuery(sessionId, translationResult);
       }
       
@@ -1213,8 +1354,14 @@ export class ReportingMCPServer {
               const matchingReports = this.reportRegistry.searchReports(suggestion.name);
               if (matchingReports.length > 0) {
                 const report = matchingReports[0]; // Use the first (best) match
-                if (report && report.name && report.description && report.id) {
-                  return `- **${report.name}** (${Math.round(suggestion.confidence * 100)}% match)\n  ${report.description}\n  Run with: \`/${report.id}\``;
+                if (report && report.id) {
+                  // Use optional chaining with type assertion to handle potential undefined metadata
+                  const reportMetadata = report as any;
+                  const reportName = reportMetadata.metadata?.name || suggestion.name;
+                  const reportDesc = reportMetadata.metadata?.description || '';
+                  return `- **${reportName}** (${Math.round(suggestion.confidence * 100)}% match)
+  ${reportDesc}
+  Run with: \`/${report.id}\``;
                 }
               }
             }
