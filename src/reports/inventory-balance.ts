@@ -981,7 +981,8 @@ export class InventoryBalanceGenerator {
       
       // Extract and validate parameters
       const reportParams: ReportParameters = {
-        asOfDate: parameters.asOfDate || 'CURRENT_DATE()'
+        asOfDate: parameters.asOfDate || 'CURRENT_DATE()',
+        limit: parameters.limit || 5000 // Default to 5000 rows if not specified
       };
       
       // PARAMETER_REVIEW 2: Log parameters in generateReport
@@ -989,7 +990,9 @@ export class InventoryBalanceGenerator {
         originalParameters: parameters,
         reportParams,
         hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
-        asOfDateValue: parameters.asOfDate
+        asOfDateValue: parameters.asOfDate,
+        hasLimit: parameters.limit ? 'YES' : 'NO',
+        limitValue: parameters.limit || 5000
       });
       
       // Extract filters

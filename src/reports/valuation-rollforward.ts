@@ -847,7 +847,8 @@ export class ValuationRollforwardGenerator {
       // Extract and validate parameters
       const reportParams: ReportParameters = {
         startDate: parameters.startDate,
-        endDate: parameters.endDate || 'CURRENT_DATE()'
+        endDate: parameters.endDate || 'CURRENT_DATE()',
+        limit: parameters.limit || 5000 // Default to 5000 rows if not specified
       };
       
       // PARAMETER_REVIEW 2: Log parameters in generateReport
@@ -857,7 +858,9 @@ export class ValuationRollforwardGenerator {
         hasStartDate: parameters.startDate ? 'YES' : 'NO',
         startDateValue: parameters.startDate,
         hasEndDate: parameters.endDate ? 'YES' : 'NO',
-        endDateValue: parameters.endDate
+        endDateValue: parameters.endDate,
+        hasLimit: parameters.limit ? 'YES' : 'NO',
+        limitValue: parameters.limit || 5000
       });
       
       // Validate required parameters
