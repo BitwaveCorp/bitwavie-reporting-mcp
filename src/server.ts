@@ -357,8 +357,12 @@ export class ReportingMCPServer {
       // Get the origin from the request headers
       const origin = req.headers.origin;
       
-      // Log the origin for debugging
-      console.log('Request origin:', origin);
+      // Log detailed request information for debugging
+      console.log('CORS_1: ==== CORS DEBUG INFO ====');
+      console.log('CORS_2: Request method:', req.method);
+      console.log('CORS_3: Request path:', req.path);
+      console.log('CORS_4: Request origin:', origin);
+      console.log('CORS_5: Request headers:', JSON.stringify(req.headers, null, 2));
       
       // Set CORS headers for all responses
       res.header('Access-Control-Allow-Origin', origin || '*');
@@ -366,12 +370,22 @@ export class ReportingMCPServer {
       res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
       res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Content-Length');
       
+      // Log the response headers we're setting
+      console.log('CORS_6: Response CORS headers set:', {
+        'Access-Control-Allow-Origin': origin || '*',
+        'Access-Control-Allow-Credentials': 'true',
+        'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Content-Length'
+      });
+      
       // Handle preflight requests
       if (req.method === 'OPTIONS') {
+        console.log('CORS_7: Handling OPTIONS preflight request');
         res.status(200).end();
         return;
       }
       
+      console.log('CORS_8: ==== END CORS DEBUG INFO ====');
       next();
     });
     
