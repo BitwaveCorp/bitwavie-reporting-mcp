@@ -16,7 +16,6 @@ import { connectionRouter } from './connection-router.js';
  * Registers all connection routes with the Express server
  */
 export function registerConnectionRoutes(app: express.Express): void {
-  console.log('CONNECTION_ROUTES_1: Registering connection routes');
   
   // Serve static files from the public directory
   app.use(express.static(path.join(process.cwd(), 'dist', 'public')));

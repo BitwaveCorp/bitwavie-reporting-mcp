@@ -30,15 +30,9 @@ export { router as connectionRouter };
 
 // Validate table access
 const validateTableAccess: RequestHandler = async (req, res) => {
-  console.log('VALIDATE_TABLE_1: Received request to validate table access');
-  console.log('VALIDATE_TABLE_2: Request headers:', JSON.stringify(req.headers, null, 2));
-  console.log('VALIDATE_TABLE_3: Request body:', JSON.stringify(req.body, null, 2));
-  
   try {
     const request = req.body as ValidateConnectionRequest;
-    console.log('VALIDATE_TABLE_4: Parsed request:', JSON.stringify(request, null, 2));
     const response = await validateConnection(request);
-    console.log('VALIDATE_TABLE_5: Validation response:', JSON.stringify(response, null, 2));
 
     if (response.success) {
       // Store connection details in session if validation successful

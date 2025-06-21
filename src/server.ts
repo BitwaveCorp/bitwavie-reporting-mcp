@@ -351,54 +351,6 @@ export class ReportingMCPServer {
     // Initialize Express server
     this.server = express();
 
-    console.log('SERVER_INIT_1: Setting up CORS middleware');
-    
-    // Configure CORS to allow requests from the frontend
-    // For testing purposes, allow all origins temporarily
-    this.server.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
-      // Get the origin from the request headers
-      const origin = req.headers.origin;
-      
-      // Log detailed request information for debugging
-      console.log('CORS_1: ==== CORS DEBUG INFO ====');
-      console.log('CORS_2: Request method:', req.method);
-      console.log('CORS_3: Request path:', req.path);
-      console.log('CORS_4: Request origin:', origin);
-      console.log('CORS_5: Request headers:', JSON.stringify(req.headers, null, 2));
-      
-      // Set CORS headers for all responses
-      res.header('Access-Control-Allow-Origin', origin || '*');
-      res.header('Access-Control-Allow-Credentials', 'true');
-      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Content-Length');
-      
-      // Log the response headers we're setting
-      console.log('CORS_6: Response CORS headers set:', {
-        'Access-Control-Allow-Origin': origin || '*',
-        'Access-Control-Allow-Credentials': 'true',
-        'Access-Control-Allow-Methods': 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Content-Length'
-      });
-      
-      // Handle preflight requests
-      if (req.method === 'OPTIONS') {
-        console.log('CORS_7: Handling OPTIONS preflight request');
-        res.status(200).end();
-        return;
-      }
-      
-      console.log('CORS_8: ==== END CORS DEBUG INFO ====');
-      next();
-    });
-    
-    // Keep the cors middleware as a fallback
-    this.server.use(cors({
-      origin: true, // Allow all origins
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'Content-Length', 'X-Requested-With']
-    }));
-
     // Initialize services
     this.initializeServices();
 
@@ -863,7 +815,7 @@ export class ReportingMCPServer {
 
       if (!this.httpServer) {
         this.httpServer = this.server.listen(this.config.port, () => {
-          console.log(`STARTUP_LOG: Server running on port ${this.config.port} with CORS debug enabled - ${new Date().toISOString()}`);
+          logFlow('SERVER', 'INFO', `Server started on port ${this.config.port}`);
         });
         
         // Start session cleanup
