@@ -3,6 +3,7 @@ import http from 'http';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import session from 'express-session';
+import cors from 'cors';
 import { ReportParameters } from './types/actions-report';
 import { ReportRegistry } from './services/report-registry.js';
 
@@ -350,6 +351,18 @@ export class ReportingMCPServer {
     // Initialize Express server
     this.server = express();
 
+    // Configure CORS to allow requests from the frontend
+    this.server.use(cors({
+      origin: [
+        'https://qa-bitwavie-front-end-390118763134.us-central1.run.app',
+        'https://prod-bitwavie-front-end-390118763134.us-central1.run.app',
+        'http://localhost:5173' // For local development
+      ],
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization']
+    }));
+
     // Initialize services
     this.initializeServices();
 
@@ -457,7 +470,11 @@ export class ReportingMCPServer {
       secret: process.env.SESSION_SECRET || 'bitwavie-reporting-session-secret',
       resave: false,
       saveUninitialized: true,
-      cookie: { secure: process.env.NODE_ENV === 'production' }
+      cookie: { 
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'none', // Required for cross-site requests
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      }
     }));
     
     // Register connection router
