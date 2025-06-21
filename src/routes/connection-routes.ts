@@ -9,8 +9,8 @@
 
 import express from 'express';
 import * as path from 'path';
-import { logFlow } from '../utils/logging';
-import { connectionRouter } from './connection-router';
+import { logFlow } from '../utils/logging.js';
+import { connectionRouter } from './connection-router.js';
 
 /**
  * Registers all connection routes with the Express server

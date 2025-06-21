@@ -14,15 +14,15 @@ import {
   AdminKeyRequest,
   AdminResponse,
   MappingsResponse
-} from '../types/session-types';
+} from '../types/session-types.js';
 import { 
   validateTableMapping, 
   validateAdminKey, 
   addTableMapping, 
   removeTableMapping, 
   getTableMappings 
-} from '../utils/table-mapping-utils';
-import { logFlow } from '../utils/logging';
+} from '../utils/table-mapping-utils.js';
+import { logFlow } from '../utils/logging.js';
 
 /**
  * Validates connection details and tests the connection

@@ -6,7 +6,7 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { logFlow } from './logging';
+import { logFlow } from './logging.js';
 
 // Constants for file paths
 const DATA_DIR = path.join(process.cwd(), 'data');

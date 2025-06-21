@@ -15,12 +15,12 @@ import {
   addNewMapping, 
   removeExistingMapping, 
   getMappings 
-} from '../services/connection-handler';
+} from '../services/connection-handler.js';
 import { 
   ValidateConnectionRequest, 
   AdminKeyRequest 
-} from '../types/session-types';
-import { logFlow } from '../utils/logging';
+} from '../types/session-types.js';
+import { logFlow } from '../utils/logging.js';
 
 // Create a router
 const router = Router();

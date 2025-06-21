@@ -7,8 +7,8 @@ import { ReportParameters } from './types/actions-report';
 import { ReportRegistry } from './services/report-registry.js';
 
 // Import connection router and UI injector
-import { connectionRouter } from './routes/connection-router';
-import { createConnectionUIMiddleware } from './utils/connection-ui-injector';
+import { connectionRouter } from './routes/connection-router.js';
+import { createConnectionUIMiddleware } from './utils/connection-ui-injector.js';
 
 // Import service modules 
 import { SchemaManager } from './services/schema-manager.js';
