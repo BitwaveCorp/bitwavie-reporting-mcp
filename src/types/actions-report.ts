@@ -174,6 +174,11 @@ export interface ReportParameters {
   runId?: string;
   orgId?: string;
   limit?: number; // Maximum number of rows to return (default: 5000)
+  connectionDetails?: {
+    projectId: string;
+    datasetId: string;
+    tableId: string;
+  };
 }
 
 export interface QueryRequest {

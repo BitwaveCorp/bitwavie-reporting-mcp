@@ -1,0 +1,32 @@
+<div id="bq-connection-container" class="bq-connection-container">
+  <div class="bq-connection-header">
+    <h3>BigQuery Connection</h3>
+    <div id="bq-connection-status" class="bq-status-disconnected">Not Connected</div>
+  </div>
+  
+  <div id="bq-connection-message" class="bq-message" style="display: none;"></div>
+  
+  <div id="bq-connection-details" class="bq-connection-details" style="display: none;"></div>
+  
+  <form id="bq-connection-form" class="bq-connection-form">
+    <div class="bq-form-group">
+      <label for="bq-project-id">Project ID</label>
+      <input type="text" id="bq-project-id" name="projectId" placeholder="Enter project ID" required>
+    </div>
+    
+    <div class="bq-form-group">
+      <label for="bq-dataset-id">Dataset ID</label>
+      <input type="text" id="bq-dataset-id" name="datasetId" placeholder="Enter dataset ID" required>
+    </div>
+    
+    <div class="bq-form-group">
+      <label for="bq-table-id">Table ID</label>
+      <input type="text" id="bq-table-id" name="tableId" placeholder="Enter table ID" required>
+    </div>
+    
+    <div class="bq-form-actions">
+      <button type="submit" id="bq-connect-button" class="bq-button bq-button-primary">Connect</button>
+      <button type="button" id="bq-connection-clear" class="bq-button bq-button-danger" style="display: none;">Disconnect</button>
+    </div>
+  </form>
+</div>

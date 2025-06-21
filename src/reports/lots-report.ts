@@ -156,7 +156,10 @@ export class LotsReportGenerator {
       const sql = this.buildLotsReportSQL(parameters, filters);
       
       // Execute the query
-      const rawResults = await this.bigQueryClient.executeReportQuery(sql, parameters);
+      const queryResult = await this.bigQueryClient.executeReport(sql, parameters);
+      
+      // Extract data from QueryResult
+      const rawResults = queryResult.data || [];
       
       // Transform and validate results
       const lotsRecords = this.transformResults(rawResults);

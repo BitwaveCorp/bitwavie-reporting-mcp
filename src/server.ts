@@ -2,8 +2,13 @@ import express from 'express';
 import http from 'http';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
+import session from 'express-session';
 import { ReportParameters } from './types/actions-report';
 import { ReportRegistry } from './services/report-registry.js';
+
+// Import connection router and UI injector
+import { connectionRouter } from './routes/connection-router';
+import { createConnectionUIMiddleware } from './utils/connection-ui-injector';
 
 // Import service modules 
 import { SchemaManager } from './services/schema-manager.js';
@@ -27,6 +32,18 @@ interface SessionData {
   executionResult?: ExecutionResult;
   formattedResult?: FormattedResult;
   timestamp: number;
+}
+
+// Express session data interface
+declare module 'express-session' {
+  interface SessionData {
+    connectionDetails?: {
+      isConnected: boolean;
+      projectId: string;
+      datasetId: string;
+      tableId: string;
+    };
+  }
 }
 
 // Utility functions
@@ -434,6 +451,20 @@ export class ReportingMCPServer {
     console.log('999999999 REGISTER - Registering API handlers');
     // Set up middleware for parsing JSON requests
     this.server.use(express.json());
+    
+    // Set up session middleware
+    this.server.use(session({
+      secret: process.env.SESSION_SECRET || 'bitwavie-reporting-session-secret',
+      resave: false,
+      saveUninitialized: true,
+      cookie: { secure: process.env.NODE_ENV === 'production' }
+    }));
+    
+    // Register connection router
+    this.server.use('/api/connection', connectionRouter);
+    
+    // Set up connection UI injection middleware
+    this.server.use(createConnectionUIMiddleware());
 
     // Register analyze data handler as an Express route
     this.server.post('/api/analyzeData', async (req, res) => {
@@ -449,7 +480,7 @@ export class ReportingMCPServer {
         const validatedData = schema.parse(req.body);
 
         // Process the request
-        const result = await this.handleAnalyzeData(validatedData as AnalyzeDataRequest);
+        const result = await this.handleAnalyzeData(validatedData as AnalyzeDataRequest, req);
         
         // Log the result structure before sending
         console.log('300 - API analyzeData response structure:', {
@@ -849,7 +880,7 @@ export class ReportingMCPServer {
     }
   }
 
-  public async handleAnalyzeData(request: AnalyzeDataRequest): Promise<AnalyzeDataResponse> {
+  public async handleAnalyzeData(request: AnalyzeDataRequest, req?: express.Request): Promise<AnalyzeDataResponse> {
     try {
       // Validate input
       if (!request.query && !request.previousResponse) {
@@ -887,7 +918,7 @@ export class ReportingMCPServer {
       
       // Always use enhanced NLQ flow
       if (this.llmQueryTranslator) {
-        const result = await this.processEnhancedNLQ(sessionId, query);
+        const result = await this.processEnhancedNLQ(sessionId, query, req);
     
     // D. RAWDATA_CHECKER - In handleAnalyzeData after processEnhancedNLQ
     console.log('D. RAWDATA_CHECKER - In handleAnalyzeData after processEnhancedNLQ:', {
@@ -928,7 +959,7 @@ export class ReportingMCPServer {
    * @param command The full command string including the slash
    * @returns Response with appropriate content
    */
-  private async handleSlashCommand(sessionId: string, command: string): Promise<AnalyzeDataResponse> {
+  private async handleSlashCommand(sessionId: string, command: string, req?: express.Request): Promise<AnalyzeDataResponse> {
     // Strip the slash and get the command text
     const commandText = command.substring(1).trim();
     
@@ -947,18 +978,18 @@ export class ReportingMCPServer {
     if (this.reportRegistry) {
       const directMatch = this.reportRegistry.getReportById(commandText);
       if (directMatch) {
-        return this.runReportById(sessionId, commandText, {});
+        return this.runReportById(sessionId, commandText, {}, req);
       }
     }
     
     // Check if this is a /run command
     if (commandText.toLowerCase().startsWith('run ')) {
       const reportName = commandText.substring(4).trim();
-      return this.findAndRunReportByName(sessionId, reportName);
+      return this.findAndRunReportByName(sessionId, reportName, req);
     }
     
     // For any other command, use NLQ to match to a report
-    return this.matchReportCommand(sessionId, commandText);
+    return this.matchReportCommand(sessionId, commandText, req);
   }
   
   /**
@@ -1049,7 +1080,7 @@ export class ReportingMCPServer {
    * @param parameters The parameters for the report
    * @returns The report response
    */
-  private async runReportById(sessionId: string, reportId: string, parameters: Record<string, any>): Promise<AnalyzeDataResponse> {
+  private async runReportById(sessionId: string, reportId: string, parameters: Record<string, any>, req?: express.Request): Promise<AnalyzeDataResponse> {
     try {
       if (!this.reportRegistry) {
         // Initialize reportRegistry if it's not already initialized
@@ -1099,7 +1130,7 @@ export class ReportingMCPServer {
         tableId: this.config.tableId || 'Not set'
       });
       
-      return this.executeReportQuery(sessionId, translationResult);
+      return this.executeReportQuery(sessionId, translationResult, req);
     } catch (error: any) {
       logFlow('SERVER', 'ERROR', `Error running report by ID: ${reportId}`, error);
       
@@ -1116,7 +1147,7 @@ export class ReportingMCPServer {
    * @param reportName The report name (can be partial)
    * @returns The report response or suggestions
    */
-  private async findAndRunReportByName(sessionId: string, reportName: string): Promise<AnalyzeDataResponse> {
+  private async findAndRunReportByName(sessionId: string, reportName: string, req?: express.Request): Promise<AnalyzeDataResponse> {
     if (!this.reportRegistry) {
       return {
         content: [{ type: 'text', text: 'Report registry not initialized.' }],
@@ -1140,7 +1171,7 @@ export class ReportingMCPServer {
       if (matches.length === 1) {
         // Exact match, run the report
         if (matches[0] && matches[0].id) {
-          return this.runReportById(sessionId, matches[0].id, {});
+          return this.runReportById(sessionId, matches[0].id, {}, req);
         } else {
           return {
             content: [{ type: 'text', text: `Error: Found a match but could not retrieve report ID.` }],
@@ -1260,7 +1291,7 @@ export class ReportingMCPServer {
     }
   }
   
-  private async matchReportCommand(sessionId: string, commandText: string): Promise<AnalyzeDataResponse> {
+  private async matchReportCommand(sessionId: string, commandText: string, req?: express.Request): Promise<AnalyzeDataResponse> {
     if (!this.llmQueryTranslator) {
       return {
         content: [{ type: 'text', text: 'LLM Query Translator not initialized.' }],
@@ -1398,7 +1429,7 @@ export class ReportingMCPServer {
         
         // No need for additional parameter instructions here
         
-        return this.executeReportQuery(sessionId, translationResult);
+        return this.executeReportQuery(sessionId, translationResult, req);
       }
       
       // If we have suggested reports, show them
@@ -1475,7 +1506,8 @@ export class ReportingMCPServer {
       reportType: string;
       reportParameters?: Record<string, any> | undefined;
       processingSteps?: Array<{step: string, description: string}> | undefined;
-    }
+    },
+    req?: express.Request
   ): Promise<AnalyzeDataResponse> {
     try {
       if (!this.reportRegistry) {
@@ -1503,6 +1535,15 @@ export class ReportingMCPServer {
       
       // Ensure parameters is an object even if undefined
       const reportParameters = translationResult.reportParameters || {};
+      
+      // Add connection details from session if available
+      if (req?.session?.connectionDetails?.isConnected) {
+        reportParameters.connectionDetails = {
+          projectId: req.session.connectionDetails.projectId,
+          datasetId: req.session.connectionDetails.datasetId,
+          tableId: req.session.connectionDetails.tableId
+        };
+      }
       
       // Apply default row limit if not specified
       if (reportParameters.limit === undefined) {
@@ -1614,13 +1655,13 @@ export class ReportingMCPServer {
     }
   }
 
-  private async processEnhancedNLQ(sessionId: string, query: string): Promise<AnalyzeDataResponse> {
+  private async processEnhancedNLQ(sessionId: string, query: string, req?: express.Request): Promise<AnalyzeDataResponse> {
     console.log(`[processEnhancedNLQ] Processing enhanced NLQ for session ${sessionId}, query: ${query}`);
     
     try {
       // Check if this is a slash command
       if (query.startsWith('/')) {
-        return this.handleSlashCommand(sessionId, query);
+        return this.handleSlashCommand(sessionId, query, req);
       }
       
       // Translate the query using LLM

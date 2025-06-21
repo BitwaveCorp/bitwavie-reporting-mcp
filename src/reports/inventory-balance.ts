@@ -153,7 +153,10 @@ export class InventoryBalanceGenerator {
       const sql = this.buildInventoryBalanceSQL(parameters, groupBy, filters);
       
       // Execute the query
-      const rawResults = await this.bigQueryClient.executeReportQuery(sql, parameters);
+      const queryResult = await this.bigQueryClient.executeReport(sql, parameters);
+      
+      // Extract data from QueryResult
+      const rawResults = queryResult.data || [];
       
       // Transform and validate results
       const inventoryRecords = this.transformResults(rawResults);

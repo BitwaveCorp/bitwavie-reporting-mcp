@@ -1,0 +1,217 @@
+/**
+ * Connection UI Styles
+ * 
+ * Styles for the BigQuery connection UI component
+ */
+
+.bq-connection-container {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  margin: 0;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  border: 1px solid #e9ecef;
+}
+
+.bq-connection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 5px;
+}
+
+.bq-connection-title {
+  font-weight: bold;
+  font-size: 14px;
+  color: #495057;
+  margin: 0;
+}
+
+.bq-connection-status {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+}
+
+.bq-connection-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.bq-connection-status-dot.connected {
+  background-color: #28a745;
+}
+
+.bq-connection-status-dot.disconnected {
+  background-color: #dc3545;
+}
+
+.bq-connection-status-text {
+  color: #6c757d;
+}
+
+.bq-connection-form {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e9ecef;
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.3s ease-out;
+}
+
+.bq-connection-form.expanded {
+  max-height: 400px;
+}
+
+.bq-form-group {
+  margin-bottom: 10px;
+}
+
+.bq-form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  color: #495057;
+}
+
+.bq-form-group input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.bq-form-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+}
+
+.bq-button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.bq-button-primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.bq-button-primary:hover {
+  background-color: #0069d9;
+}
+
+.bq-button-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.bq-button-secondary:hover {
+  background-color: #5a6268;
+}
+
+.bq-button-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.bq-button-danger:hover {
+  background-color: #c82333;
+}
+
+.bq-connection-message {
+  margin-top: 10px;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.bq-connection-message.success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.bq-connection-message.error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.bq-connection-message.info {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+.bq-connection-details {
+  margin-top: 10px;
+  padding: 8px;
+  background-color: #e9ecef;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.bq-connection-details-item {
+  margin-bottom: 5px;
+}
+
+.bq-connection-details-label {
+  font-weight: bold;
+  color: #495057;
+}
+
+.bq-private-key-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.bq-private-key-dialog-content {
+  background-color: white;
+  padding: 20px;
+  border-radius: 4px;
+  width: 400px;
+  max-width: 90%;
+}
+
+.bq-private-key-dialog h3 {
+  margin-top: 0;
+  color: #495057;
+}
+
+.bq-private-key-dialog textarea {
+  width: 100%;
+  height: 150px;
+  margin-bottom: 15px;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.bq-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bq-dialog-actions button {
+  margin-left: 10px;
+}

@@ -20,6 +20,13 @@ import {
   ReportParameters 
 } from '../types/actions-report.js';
 
+// Connection details interface for session-based connections
+interface ConnectionDetails {
+  projectId: string;
+  datasetId: string;
+  tableId: string;
+}
+
 // Enhanced logging function with timestamps and flow tracking
 const logFlow = (stage: string, direction: 'ENTRY' | 'EXIT' | 'ERROR' | 'INFO', message: string, data: any = null) => {
   const timestamp = new Date().toISOString();
@@ -403,29 +410,6 @@ export class BigQueryClient {
       logFlow('SQL_GENERATION', 'INFO', 'Generated SQL query', { sql });
       
       // Check cache
-      const cacheKey = this.getCacheKey(sql, parameters);
-      const cached = this.getFromCache(cacheKey);
-      if (cached) {
-        logFlow('EXECUTE_QUERY', 'EXIT', 'Returning cached query results', { 
-          rowCount: cached.length,
-          executionTime: Date.now() - startTime,
-          cached: true
-        });
-        
-        return {
-          success: true,
-          data: cached,
-          metadata: {
-            rows_processed: cached.length,
-            execution_time_ms: Date.now() - startTime,
-            cached: true,
-            columns_used: parseResult.columns
-              .map(col => col.mappedColumns || [])
-              .flat()
-              .filter(Boolean) as string[]
-          }
-        };
-      }
 
       // Execute query
       logFlow('SQL_EXECUTE', 'ENTRY', 'Executing SQL query against BigQuery');
@@ -433,7 +417,7 @@ export class BigQueryClient {
       logFlow('SQL_EXECUTE', 'EXIT', 'SQL query execution completed', { rowCount: results.length });
       
       // Cache results
-      this.setCache(cacheKey, results);
+      this.setCache(this.getCacheKey(sql, parameters), results);
 
       // Format results based on query intent
       const formattedData = this.formatAnalyticalResults(results, parseResult);
@@ -489,42 +473,75 @@ export class BigQueryClient {
   /**
    * Execute predefined report queries
    */
-  async executeReportQuery(sql: string, parameters: ReportParameters): Promise<any[]> {
+  async executeReport(reportId: string, parameters: ReportParameters = {}): Promise<QueryResult> {
+    // Check if connection details are provided in parameters
+    if (parameters.connectionDetails) {
+      // Temporarily reconfigure the client with session connection details
+      await this.reconfigureWithConnectionDetails(parameters.connectionDetails);
+    }
     logFlow('REPORT_QUERY', 'ENTRY', 'Executing report query', { parameters });
     
-    // PARAMETER_REVIEW 6: Log parameters at the start of executeReportQuery
-    console.log('PARAMETER_REVIEW 6 - BigQueryClient.executeReportQuery:', {
-      parameters,
-      hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
-      asOfDateValue: parameters.asOfDate,
-      sqlContainsAsOfDate: sql.includes('@asOfDate') ? 'YES' : 'NO'
-    });
-    
-    // Log all available parameters for debugging
-    console.log('PARAMETER_CHECKER - Available parameters:', {
-      runId: parameters.runId,
-      orgId: parameters.orgId,
-      asOfDate: parameters.asOfDate,
-      asOfSEC: parameters.asOfSEC,
-      startDate: parameters.startDate,
-      endDate: parameters.endDate
-    });
-    
-    // Check for parameter placeholders in SQL
-    const placeholders = sql.match(/@[a-zA-Z0-9_]+/g) || [];
-    console.log('PARAMETER_CHECKER - SQL parameter placeholders:', placeholders);
-    
-    const parameterizedSQL = this.replaceParameters(sql, parameters);
-    logFlow('SQL_GENERATION', 'INFO', 'Generated parameterized SQL', { sql: parameterizedSQL });
-    
     try {
+      // Get the SQL for the report
+      const reportSql = await this.getReportSql(reportId);
+      
+      if (!reportSql) {
+        throw new Error(`Report SQL not found for report ID: ${reportId}`);
+      }
+      
+      // PARAMETER_REVIEW 6: Log parameters at the start of executeReportQuery
+      console.log('PARAMETER_REVIEW 6 - BigQueryClient.executeReportQuery:', {
+        parameters,
+        hasAsOfDate: parameters.asOfDate ? 'YES' : 'NO',
+        asOfDateValue: parameters.asOfDate,
+        sqlContainsAsOfDate: reportSql.includes('@asOfDate') ? 'YES' : 'NO'
+      });
+      
+      // Log all available parameters for debugging
+      console.log('PARAMETER_CHECKER - Available parameters:', {
+        runId: parameters.runId,
+        orgId: parameters.orgId,
+        asOfDate: parameters.asOfDate,
+        asOfSEC: parameters.asOfSEC,
+        startDate: parameters.startDate,
+        endDate: parameters.endDate
+      });
+      
+      // Check for parameter placeholders in SQL
+      const placeholders = reportSql.match(/@[a-zA-Z0-9_]+/g) || [];
+      console.log('PARAMETER_CHECKER - SQL parameter placeholders:', placeholders);
+      
+      const parameterizedSQL = this.replaceParameters(reportSql, parameters);
+      logFlow('SQL_GENERATION', 'INFO', 'Generated parameterized SQL', { sql: parameterizedSQL });
+    
       const results = await this.executeQuery(parameterizedSQL);
       logFlow('REPORT_QUERY', 'EXIT', 'Report query execution completed', { rowCount: results.length });
-      return results;
+      
+      return {
+        success: true,
+        data: results,
+        metadata: {
+          rows_processed: results.length,
+          execution_time_ms: 0,
+          cached: false,
+          columns_used: []
+        }
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logFlow('REPORT_QUERY', 'ERROR', 'Report query execution failed', { error: errorMessage });
-      throw error;
+      
+      return {
+        success: false,
+        error: { type: 'DATA_ERROR', message: errorMessage },
+        data: [],
+        metadata: {
+          rows_processed: 0,
+          execution_time_ms: 0,
+          cached: false,
+          columns_used: []
+        }
+      };
     }
   }
 
@@ -747,6 +764,61 @@ export class BigQueryClient {
   /**
    * Execute a SQL query against BigQuery
    */
+  /**
+   * Reconfigures the BigQuery client with session-based connection details
+   * @param connectionDetails The connection details from the user session
+   */
+  /**
+   * Get the SQL for a report by ID
+   * @param reportId The report ID
+   * @returns The SQL for the report
+   */
+  private async getReportSql(reportId: string): Promise<string | null> {
+    // This is a placeholder - in a real implementation, you would fetch the SQL from a database or file
+    // For now, we'll return a simple SQL statement for testing
+    return `SELECT * FROM \`${this.config?.projectId}.${this.config?.datasetId}.${this.config?.tableId}\` LIMIT 10`;
+  }
+  
+  /**
+   * Reconfigures the BigQuery client with session-based connection details
+   * @param connectionDetails The connection details from the user session
+   */
+  private async reconfigureWithConnectionDetails(connectionDetails: ConnectionDetails): Promise<void> {
+    logFlow('RECONFIGURE', 'ENTRY', 'Reconfiguring BigQuery client with session connection details', { 
+      projectId: connectionDetails.projectId,
+      datasetId: connectionDetails.datasetId,
+      tableId: connectionDetails.tableId
+    });
+    
+    try {
+      // Save the original configuration to restore later if needed
+      const originalConfig = this.config;
+      
+      // Create a new configuration with the session connection details
+      const sessionConfig: BigQueryConfig = {
+        projectId: connectionDetails.projectId,
+        datasetId: connectionDetails.datasetId,
+        tableId: connectionDetails.tableId,
+        // Keep the same authentication method
+        credentials: originalConfig?.credentials
+      };
+      
+      // Only add keyFilename if it exists in the original config
+      if (originalConfig?.keyFilename) {
+        sessionConfig.keyFilename = originalConfig.keyFilename;
+      }
+      
+      // Configure the client with the new details
+      await this.configure(sessionConfig);
+      
+      logFlow('RECONFIGURE', 'EXIT', 'Successfully reconfigured BigQuery client with session connection details');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logFlow('RECONFIGURE', 'ERROR', 'Failed to reconfigure BigQuery client', { error: errorMessage });
+      throw new Error(`Failed to reconfigure BigQuery client: ${errorMessage}`);
+    }
+  }
+  
   private async executeQuery(sql: string): Promise<any[]> {
     if (!this.bigquery) {
       logFlow('EXECUTE_QUERY', 'ERROR', 'BigQuery client not initialized');

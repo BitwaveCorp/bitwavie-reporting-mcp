@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BigQuery Table Mapping Admin</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    
+    h1, h2, h3 {
+      color: #2c3e50;
+    }
+    
+    .container {
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    
+    .login-container {
+      max-width: 500px;
+      margin: 100px auto;
+      text-align: center;
+    }
+    
+    .admin-container {
+      display: none;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 16px;
+    }
+    
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+    
+    button:hover {
+      background-color: #2980b9;
+    }
+    
+    button.danger {
+      background-color: #e74c3c;
+    }
+    
+    button.danger:hover {
+      background-color: #c0392b;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    
+    tr:hover {
+      background-color: #f5f5f5;
+    }
+    
+    .status-message {
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 4px;
+    }
+    
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .header-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Container -->
+  <div id="login-container" class="container login-container">
+    <h1>BigQuery Table Mapping Admin</h1>
+    <p>Please enter your admin key to access the admin panel.</p>
+    
+    <div class="form-group">
+      <label for="admin-key">Admin Key</label>
+      <input type="password" id="admin-key" placeholder="Enter admin key">
+    </div>
+    
+    <button id="login-button">Login</button>
+    
+    <div id="login-status" class="status-message" style="display: none;"></div>
+  </div>
+  
+  <!-- Admin Container -->
+  <div id="admin-container" class="container admin-container">
+    <div class="header-actions">
+      <h1>BigQuery Table Mapping Admin</h1>
+      <button id="logout-button" class="danger">Logout</button>
+    </div>
+    
+    <div class="container">
+      <h2>Add New Mapping</h2>
+      <form id="add-mapping-form">
+        <div class="form-group">
+          <label for="private-key">Private Key</label>
+          <input type="text" id="private-key" placeholder="Enter private key" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="project-id">Project ID</label>
+          <input type="text" id="project-id" placeholder="Enter project ID" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="dataset-id">Dataset ID</label>
+          <input type="text" id="dataset-id" placeholder="Enter dataset ID" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="table-id">Table ID</label>
+          <input type="text" id="table-id" placeholder="Enter table ID" required>
+        </div>
+        
+        <button type="submit">Add Mapping</button>
+      </form>
+      
+      <div id="add-status" class="status-message" style="display: none;"></div>
+    </div>
+    
+    <div class="container">
+      <h2>Existing Mappings</h2>
+      <table id="mappings-table">
+        <thead>
+          <tr>
+            <th>Private Key</th>
+            <th>Project ID</th>
+            <th>Dataset ID</th>
+            <th>Table ID</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="mappings-body">
+          <!-- Mappings will be populated here -->
+        </tbody>
+      </table>
+      
+      <div id="mappings-status" class="status-message" style="display: none;"></div>
+    </div>
+  </div>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Elements
+      const loginContainer = document.getElementById('login-container');
+      const adminContainer = document.getElementById('admin-container');
+      const loginButton = document.getElementById('login-button');
+      const logoutButton = document.getElementById('logout-button');
+      const adminKeyInput = document.getElementById('admin-key');
+      const loginStatus = document.getElementById('login-status');
+      const addMappingForm = document.getElementById('add-mapping-form');
+      const addStatus = document.getElementById('add-status');
+      const mappingsTable = document.getElementById('mappings-table');
+      const mappingsBody = document.getElementById('mappings-body');
+      const mappingsStatus = document.getElementById('mappings-status');
+      
+      // Check if user is already logged in as admin
+      checkAdminStatus();
+      
+      // Login button click handler
+      loginButton.addEventListener('click', async function() {
+        const adminKey = adminKeyInput.value.trim();
+        
+        if (!adminKey) {
+          showStatus(loginStatus, 'Please enter an admin key.', 'error');
+          return;
+        }
+        
+        try {
+          const response = await fetch('/api/admin/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ adminKey })
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            showStatus(loginStatus, 'Login successful!', 'success');
+            setTimeout(() => {
+              loginContainer.style.display = 'none';
+              adminContainer.style.display = 'block';
+              loadMappings();
+            }, 1000);
+          } else {
+            showStatus(loginStatus, `Login failed: ${data.message}`, 'error');
+          }
+        } catch (error) {
+          showStatus(loginStatus, `Error: ${error.message}`, 'error');
+        }
+      });
+      
+      // Logout button click handler
+      logoutButton.addEventListener('click', async function() {
+        try {
+          const response = await fetch('/api/admin/logout', {
+            method: 'POST'
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            adminContainer.style.display = 'none';
+            loginContainer.style.display = 'block';
+            adminKeyInput.value = '';
+          }
+        } catch (error) {
+          console.error('Error logging out:', error);
+        }
+      });
+      
+      // Add mapping form submit handler
+      addMappingForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        
+        const privateKey = document.getElementById('private-key').value.trim();
+        const projectId = document.getElementById('project-id').value.trim();
+        const datasetId = document.getElementById('dataset-id').value.trim();
+        const tableId = document.getElementById('table-id').value.trim();
+        
+        if (!privateKey || !projectId || !datasetId || !tableId) {
+          showStatus(addStatus, 'All fields are required.', 'error');
+          return;
+        }
+        
+        try {
+          const response = await fetch('/api/admin/mappings', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: privateKey,
+              projectId,
+              datasetId,
+              tableId
+            })
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            showStatus(addStatus, 'Mapping added successfully!', 'success');
+            addMappingForm.reset();
+            loadMappings();
+          } else {
+            showStatus(addStatus, `Failed to add mapping: ${data.message}`, 'error');
+          }
+        } catch (error) {
+          showStatus(addStatus, `Error: ${error.message}`, 'error');
+        }
+      });
+      
+      // Function to check admin status
+      async function checkAdminStatus() {
+        try {
+          const response = await fetch('/api/admin/status');
+          const data = await response.json();
+          
+          if (data.success && data.isAdmin) {
+            loginContainer.style.display = 'none';
+            adminContainer.style.display = 'block';
+            loadMappings();
+          }
+        } catch (error) {
+          console.error('Error checking admin status:', error);
+        }
+      }
+      
+      // Function to load mappings
+      async function loadMappings() {
+        try {
+          const response = await fetch('/api/admin/mappings');
+          const data = await response.json();
+          
+          if (data.success && data.mappings) {
+            // Clear existing rows
+            mappingsBody.innerHTML = '';
+            
+            // Add new rows
+            data.mappings.forEach(mapping => {
+              const row = document.createElement('tr');
+              
+              row.innerHTML = `
+                <td>${mapping.name}</td>
+                <td>${mapping.projectId}</td>
+                <td>${mapping.datasetId}</td>
+                <td>${mapping.tableId}</td>
+                <td>
+                  <button class="danger delete-mapping" data-name="${mapping.name}">Delete</button>
+                </td>
+              `;
+              
+              mappingsBody.appendChild(row);
+            });
+            
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-mapping').forEach(button => {
+              button.addEventListener('click', deleteMapping);
+            });
+            
+            if (data.mappings.length === 0) {
+              showStatus(mappingsStatus, 'No mappings found.', 'info');
+            } else {
+              mappingsStatus.style.display = 'none';
+            }
+          } else {
+            showStatus(mappingsStatus, `Failed to load mappings: ${data.message}`, 'error');
+          }
+        } catch (error) {
+          showStatus(mappingsStatus, `Error: ${error.message}`, 'error');
+        }
+      }
+      
+      // Function to delete mapping
+      async function deleteMapping() {
+        const name = this.getAttribute('data-name');
+        
+        if (confirm(`Are you sure you want to delete the mapping for "${name}"?`)) {
+          try {
+            const response = await fetch(`/api/admin/mappings/${encodeURIComponent(name)}`, {
+              method: 'DELETE'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+              showStatus(mappingsStatus, 'Mapping deleted successfully!', 'success');
+              loadMappings();
+            } else {
+              showStatus(mappingsStatus, `Failed to delete mapping: ${data.message}`, 'error');
+            }
+          } catch (error) {
+            showStatus(mappingsStatus, `Error: ${error.message}`, 'error');
+          }
+        }
+      }
+      
+      // Function to show status message
+      function showStatus(element, message, type) {
+        element.textContent = message;
+        element.className = `status-message ${type}`;
+        element.style.display = 'block';
+        
+        // Hide success messages after 3 seconds
+        if (type === 'success') {
+          setTimeout(() => {
+            element.style.display = 'none';
+          }, 3000);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
