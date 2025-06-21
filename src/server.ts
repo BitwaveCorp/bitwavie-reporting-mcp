@@ -352,25 +352,32 @@ export class ReportingMCPServer {
     this.server = express();
 
     // Configure CORS to allow requests from the frontend
+    // For testing purposes, allow all origins temporarily
+    this.server.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      // Get the origin from the request headers
+      const origin = req.headers.origin;
+      
+      // Log the origin for debugging
+      console.log('Request origin:', origin);
+      
+      // Set CORS headers for all responses
+      res.header('Access-Control-Allow-Origin', origin || '*');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Content-Length');
+      
+      // Handle preflight requests
+      if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
+      }
+      
+      next();
+    });
+    
+    // Keep the cors middleware as a fallback
     this.server.use(cors({
-      // Allow all origins for testing - will be restricted in production
-      origin: function(origin, callback) {
-        // Allow requests with no origin (like mobile apps, curl, etc)
-        if (!origin) return callback(null, true);
-        
-        const allowedOrigins = [
-          'https://qa-bitwavie-front-end-390118763134.us-central1.run.app',
-          'https://prod-bitwavie-front-end-390118763134.us-central1.run.app',
-          'http://localhost:5173' // For local development
-        ];
-        
-        if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
-          callback(null, true);
-        } else {
-          console.log('CORS blocked origin:', origin);
-          callback(null, false);
-        }
-      },
+      origin: true, // Allow all origins
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization', 'Content-Length', 'X-Requested-With']
