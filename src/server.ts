@@ -351,6 +351,8 @@ export class ReportingMCPServer {
     // Initialize Express server
     this.server = express();
 
+    console.log('SERVER_INIT_1: Setting up CORS middleware');
+    
     // Configure CORS to allow requests from the frontend
     // For testing purposes, allow all origins temporarily
     this.server.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -511,6 +513,7 @@ export class ReportingMCPServer {
       }
     }));
     
+    console.log('SERVER_INIT_3: Registering connection router at /api/connection');
     // Register connection router
     this.server.use('/api/connection', connectionRouter);
     
@@ -860,7 +863,7 @@ export class ReportingMCPServer {
 
       if (!this.httpServer) {
         this.httpServer = this.server.listen(this.config.port, () => {
-          logFlow('SERVER', 'INFO', `Server started on port ${this.config.port}`);
+          console.log(`STARTUP_LOG: Server running on port ${this.config.port} with CORS debug enabled - ${new Date().toISOString()}`);
         });
         
         // Start session cleanup
