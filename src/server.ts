@@ -353,14 +353,27 @@ export class ReportingMCPServer {
 
     // Configure CORS to allow requests from the frontend
     this.server.use(cors({
-      origin: [
-        'https://qa-bitwavie-front-end-390118763134.us-central1.run.app',
-        'https://prod-bitwavie-front-end-390118763134.us-central1.run.app',
-        'http://localhost:5173' // For local development
-      ],
+      // Allow all origins for testing - will be restricted in production
+      origin: function(origin, callback) {
+        // Allow requests with no origin (like mobile apps, curl, etc)
+        if (!origin) return callback(null, true);
+        
+        const allowedOrigins = [
+          'https://qa-bitwavie-front-end-390118763134.us-central1.run.app',
+          'https://prod-bitwavie-front-end-390118763134.us-central1.run.app',
+          'http://localhost:5173' // For local development
+        ];
+        
+        if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+          callback(null, true);
+        } else {
+          console.log('CORS blocked origin:', origin);
+          callback(null, false);
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization']
+      allowedHeaders: ['Content-Type', 'Authorization', 'Content-Length', 'X-Requested-With']
     }));
 
     // Initialize services
