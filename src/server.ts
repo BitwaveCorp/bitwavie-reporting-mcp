@@ -335,7 +335,7 @@ export class ReportingMCPServer {
   constructor(config: ReportingServerConfig) {
     // Initialize config with defaults
     this.config = {
-      port: config.port || 3000,
+      port: process.env.PORT ? parseInt(process.env.PORT) : (config.port || 3000),
       projectId: config.projectId,
       datasetId: config.datasetId,
       tableId: config.tableId,
