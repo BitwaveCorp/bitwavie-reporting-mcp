@@ -409,8 +409,6 @@ export class BigQueryClient {
       const sql = this.generateAnalyticalSQL(parseResult, parameters);
       logFlow('SQL_GENERATION', 'INFO', 'Generated SQL query', { sql });
       
-      // Check cache
-
       // Execute query
       logFlow('SQL_EXECUTE', 'ENTRY', 'Executing SQL query against BigQuery');
       const results = await this.executeQuery(sql);
