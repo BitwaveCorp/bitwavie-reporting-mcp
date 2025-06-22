@@ -23,6 +23,7 @@ import {
   getTableMappings 
 } from '../utils/table-mapping-utils.js';
 import { logFlow } from '../utils/logging.js';
+import { ConnectionManager } from './connection-manager.js';
 
 /**
  * Validates connection details and tests the connection
@@ -84,7 +85,17 @@ export async function validateConnection(
         rowCount: rows.length
       });
 
-      // Connection successful
+      // Connection successful - update ConnectionManager
+      const connectionManager = ConnectionManager.getInstance();
+      
+      // Log the successful connection
+      connectionManager.logConnectionDetails({
+        projectId: request.projectId,
+        datasetId: request.datasetId,
+        tableId: request.tableId,
+        privateKey: request.privateKey
+      });
+      
       return {
         success: true,
         message: 'Connection successful',

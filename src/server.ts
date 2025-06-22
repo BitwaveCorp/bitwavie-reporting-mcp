@@ -1878,8 +1878,21 @@ export class ReportingMCPServer {
         throw new Error('LLMQueryTranslator not initialized');
       }
       
+      // Extract connection details from request if available
+      let connectionDetails: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string } | undefined;
+      
+      if (req?.body?.connectionDetails) {
+        connectionDetails = req.body.connectionDetails;
+        console.log('[processEnhancedNLQ] Using connection details from request:', {
+          projectId: connectionDetails?.projectId || 'Not provided',
+          datasetId: connectionDetails?.datasetId || 'Not provided',
+          tableId: connectionDetails?.tableId || 'Not provided',
+          hasPrivateKey: !!connectionDetails?.privateKey
+        });
+      }
+      
       // Step 1: Translate the query to SQL
-      const translationResult = await this.llmQueryTranslator.translateQuery(query);
+      const translationResult = await this.llmQueryTranslator.translateQuery(query, undefined, connectionDetails);
       logFlow('SERVER', 'INFO', 'Translation result', { translationResult });
 
       // Step 2: Check if this is a report query

@@ -10,6 +10,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logFlow } from '../utils/logging.js';
 import { SchemaManager } from './schema-manager.js';
 import { ReportRegistry } from './report-registry.js';
+import { ConnectionManager } from './connection-manager.js';
 
 // Types
 export interface TranslationConfig {
@@ -265,13 +266,19 @@ Only return valid JSON. Do not include any explanations or additional text outsi
    */
   public async translateQuery(
     query: string, 
-    previousContext?: string
+    previousContext?: string,
+    connectionDetails?: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string }
   ): Promise<TranslationResult> {
     if (!this.anthropic) {
       throw new Error('Anthropic client not initialized');
     }
     
-    logFlow('LLM_TRANSLATOR', 'ENTRY', 'Translating query', { query, hasPreviousContext: !!previousContext });
+    logFlow('LLM_TRANSLATOR', 'ENTRY', 'Translating query', { 
+      query, 
+      hasPreviousContext: !!previousContext,
+      hasConnectionDetails: !!connectionDetails,
+      connectionSource: connectionDetails ? 'session' : 'environment'
+    });
     
     try {
       // Step 0: Check if this is a report query
@@ -317,8 +324,8 @@ Only return valid JSON. Do not include any explanations or additional text outsi
       // Step 2: Analyze aggregation/selection operations (results generation)
       const aggregationComponents = await this.analyzeAggregationOperations(query, filterComponents);
       
-      // Step 3: Generate the complete SQL query
-      const sqlResult = await this.generateSQL(query, filterComponents, aggregationComponents);
+      // Step 3: Generate SQL from the components
+      const sqlResult = await this.generateSQL(query, filterComponents, aggregationComponents, connectionDetails);
       
       // Determine if confirmation is required based on confidence
       const requiresConfirmation = sqlResult.confidence < 0.7;
@@ -609,7 +616,8 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
       limitDescription: string;
       limitClause: string;
       confidence: number;
-    }
+    },
+    connectionDetails?: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string }
   ): Promise<{
     sql: string;
     interpretedQuery: string;
@@ -626,10 +634,16 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
       aggregationConfidence: aggregationComponents.confidence
     });
     
-    // Get table information
+    // Get table information using ConnectionManager
+    const connectionManager = ConnectionManager.getInstance();
     const columnName = this.schemaManager.getSchema()?.columns[0]?.name;
+    
+    // Log connection details (safely - without private key)
+    connectionManager.logConnectionDetails(connectionDetails);
+    
+    // Get fully qualified table ID from ConnectionManager
     const tableId = columnName 
-      ? `\`${process.env.GOOGLE_CLOUD_PROJECT_ID}.${process.env.BIGQUERY_DATASET_ID}.${process.env.BIGQUERY_TABLE_ID}\``
+      ? connectionManager.getFullyQualifiedTableId(connectionDetails)
       : 'actions'; // Default fallback
     
     // Validate and ensure we have a non-empty aggregation clause

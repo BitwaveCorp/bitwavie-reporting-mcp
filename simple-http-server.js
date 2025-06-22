@@ -1,10 +1,41 @@
 // Simple HTTP server for Cloud Run deployment testing with MCP server integration
 import express from 'express';
+import cors from 'cors';
 import { ReportingMCPServer } from './dist/server.js';
 
 // Create an Express app
 const app = express();
+app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Session storage for connection details
+const sessionStorage = {
+  connectionDetails: null,
+  isConnected: false
+};
+
+// Function to get the current connection details (from session or environment variables)
+function getCurrentConnectionDetails() {
+  // Use session storage if available
+  if (sessionStorage.isConnected && sessionStorage.connectionDetails) {
+    console.log('[SIMPLE-HTTP] Using session connection details for query');
+    return {
+      projectId: sessionStorage.connectionDetails.projectId,
+      datasetId: sessionStorage.connectionDetails.datasetId,
+      tableId: sessionStorage.connectionDetails.tableId,
+      privateKey: sessionStorage.connectionDetails.privateKey
+    };
+  }
+  
+  // Fall back to environment variables
+  console.log('[SIMPLE-HTTP] Using environment variables for query');
+  return {
+    projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+    datasetId: process.env.BIGQUERY_DATASET_ID,
+    tableId: process.env.BIGQUERY_TABLE_ID
+  };
+}
 
 // Log configuration
 console.log('[SIMPLE-HTTP] Starting server with configuration:');
@@ -131,11 +162,23 @@ app.post('/rpc', async (req, res) => {
             console.log('[SIMPLE-HTTP] Calling mcpServer.handleAnalyzeData...');
             const startTime = Date.now();
             
+            // Get current connection details (from session or environment variables)
+            const connectionDetails = getCurrentConnectionDetails();
+            
+            // Add connection details to the request
             const analyzeResult = await mcpServer.handleAnalyzeData({
               query: requestData.query,
               confirmedMappings: requestData.confirmedMappings,
-              previousResponse: requestData.previousResponse
+              previousResponse: requestData.previousResponse,
+              connectionDetails: connectionDetails
             });
+            
+            console.log('[SIMPLE-HTTP] Using connection details for query:', JSON.stringify({
+              projectId: connectionDetails.projectId,
+              datasetId: connectionDetails.datasetId,
+              tableId: connectionDetails.tableId,
+              hasPrivateKey: !!connectionDetails.privateKey
+            }));
             
             const endTime = Date.now();
             console.log(`[SIMPLE-HTTP] handleAnalyzeData completed in ${endTime - startTime}ms`);
@@ -280,6 +323,23 @@ app.post('/rpc', async (req, res) => {
             
             console.log('[SIMPLE-HTTP] validateConnection result:', JSON.stringify(validationResult));
             
+            // Store connection details in session storage if validation was successful
+            if (validationResult.success) {
+              sessionStorage.isConnected = true;
+              sessionStorage.connectionDetails = {
+                projectId: connectionRequest.projectId,
+                datasetId: connectionRequest.datasetId,
+                tableId: connectionRequest.tableId,
+                privateKey: connectionRequest.privateKey
+              };
+              console.log('[SIMPLE-HTTP] Connection details stored in session storage');
+            } else {
+              // Clear session storage if validation failed
+              sessionStorage.isConnected = false;
+              sessionStorage.connectionDetails = null;
+              console.log('[SIMPLE-HTTP] Connection validation failed, session storage cleared');
+            }
+            
             return res.json({
               jsonrpc: '2.0',
               result: validationResult,
@@ -314,26 +374,49 @@ app.post('/rpc', async (req, res) => {
       case 'connection/status': {
         console.log('[SIMPLE-HTTP] Processing connection/status request');
         
-        // For simple-http-server, we don't have session management
-        // So we'll return a basic response based on environment variables
-        const isConnected = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && 
+        // Use session storage for connection status if available
+        // Otherwise fall back to environment variables
+        let isConnected = sessionStorage.isConnected;
+        let connectionDetails = sessionStorage.connectionDetails;
+        
+        // If no session connection, check if we have environment variables as fallback
+        if (!isConnected) {
+          const hasEnvVars = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && 
                              process.env.BIGQUERY_DATASET_ID && 
                              process.env.BIGQUERY_TABLE_ID);
+          
+          // Only use environment variables if we don't have a session connection
+          if (hasEnvVars) {
+            isConnected = true;
+            connectionDetails = {
+              projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+              datasetId: process.env.BIGQUERY_DATASET_ID,
+              tableId: process.env.BIGQUERY_TABLE_ID
+            };
+          }
+        }
         
-        const connectionDetails = isConnected ? {
-          projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
-          datasetId: process.env.BIGQUERY_DATASET_ID,
-          tableId: process.env.BIGQUERY_TABLE_ID,
-          isConnected: true
-        } : null;
-        
-        console.log('[SIMPLE-HTTP] Connection status:', { isConnected, connectionDetails });
+        console.log(`[SIMPLE-HTTP] Connection status: ${isConnected ? 'Connected' : 'Not connected'}`);
+        if (isConnected && connectionDetails) {
+          console.log(`[SIMPLE-HTTP] Using ${sessionStorage.isConnected ? 'session' : 'environment'} connection details:`, 
+            JSON.stringify({
+              projectId: connectionDetails.projectId,
+              datasetId: connectionDetails.datasetId,
+              tableId: connectionDetails.tableId,
+              hasPrivateKey: !!connectionDetails.privateKey
+            }));
+        }
         
         return res.json({
           jsonrpc: '2.0',
           result: {
+            success: true,
             isConnected,
-            connectionDetails
+            connectionDetails: isConnected ? {
+              projectId: connectionDetails.projectId,
+              datasetId: connectionDetails.datasetId,
+              tableId: connectionDetails.tableId
+            } : null
           },
           id
         });
@@ -342,15 +425,17 @@ app.post('/rpc', async (req, res) => {
       case 'connection/clear': {
         console.log('[SIMPLE-HTTP] Processing connection/clear request');
         
-        // For simple-http-server, we don't have session management
-        // So we'll just return a success response
-        console.log('[SIMPLE-HTTP] Connection cleared (no-op in simple-http-server)');
+        // Clear session storage
+        sessionStorage.isConnected = false;
+        sessionStorage.connectionDetails = null;
+        
+        console.log('[SIMPLE-HTTP] Connection cleared from session storage');
         
         return res.json({
           jsonrpc: '2.0',
           result: {
             success: true,
-            message: 'Connection cleared'
+            message: 'Connection cleared successfully'
           },
           id
         });
