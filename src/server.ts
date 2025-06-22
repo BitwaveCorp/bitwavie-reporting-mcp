@@ -771,22 +771,29 @@ export class ReportingMCPServer {
               
             case 'connection/validate-table-access':
               console.log('[RPC] Processing connection/validate-table-access request');
-              if (!params || typeof params !== 'object') {
-                console.log('[RPC] Invalid params for connection/validate-table-access:', params);
+              console.log('[RPC] Request params:', JSON.stringify(params));
+              
+              // Check if params is an array (as expected from frontend)
+              if (!params || !Array.isArray(params) || params.length === 0) {
+                console.log('[RPC] Invalid params for connection/validate-table-access: Expected array but got:', typeof params);
                 return res.status(400).json({
                   jsonrpc: '2.0',
-                  error: { code: -32602, message: 'Invalid params for connection/validate-table-access' },
+                  error: { code: -32602, message: 'Invalid params for connection/validate-table-access: Expected array' },
                   id
                 });
               }
               
               try {
+                // Extract the first element from the params array
+                const requestData = params[0];
+                console.log('[RPC] connection/validate-table-access request data:', JSON.stringify(requestData));
+                
                 // Extract connection parameters from the request
                 const connectionRequest: ValidateConnectionRequest = {
-                  projectId: params.projectId,
-                  datasetId: params.datasetId,
-                  tableId: params.tableId,
-                  privateKey: params.privateKey
+                  projectId: requestData.projectId,
+                  datasetId: requestData.datasetId,
+                  tableId: requestData.tableId,
+                  privateKey: requestData.privateKey
                 };
                 
                 // If privateKey is not provided, try to use a default key from table mappings
