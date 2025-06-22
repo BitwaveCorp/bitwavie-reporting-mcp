@@ -1059,6 +1059,35 @@ export class ReportingMCPServer {
       };
     }
   }
+  
+  /**
+   * Validates BigQuery connection details and tests access to the specified table
+   * @param request Connection validation request with project, dataset, table, and private key
+   * @returns Validation result with success status and connection details
+   */
+  public async validateConnection(request: ValidateConnectionRequest): Promise<ValidateConnectionResponse> {
+    try {
+      console.log('[SERVER] Validating connection with validateConnection');
+      
+      // Call the imported validateConnection function from connection-handler.js
+      const validationResult = await validateConnection(request);
+      
+      console.log('[SERVER] Connection validation result:', {
+        success: validationResult.success,
+        message: validationResult.message,
+        hasConnectionDetails: !!validationResult.connectionDetails
+      });
+      
+      return validationResult;
+    } catch (error: any) {
+      console.error('[SERVER] Error in validateConnection:', error);
+      
+      return {
+        success: false,
+        message: `Connection validation failed: ${formatError(error)}`
+      };
+    }
+  }
 
   public async handleAnalyzeData(request: AnalyzeDataRequest, req?: express.Request): Promise<AnalyzeDataResponse> {
     try {

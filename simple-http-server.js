@@ -75,7 +75,10 @@ app.post('/rpc', async (req, res) => {
           result: {
             tools: [
               { name: 'analyze_actions_data', description: 'Analyze crypto transaction data' },
-              { name: 'test_connection', description: 'Test connection to MCP server' }
+              { name: 'test_connection', description: 'Test connection to MCP server' },
+              { name: 'connection/validate-table-access', description: 'Validate BigQuery table access' },
+              { name: 'connection/status', description: 'Get current connection status' },
+              { name: 'connection/clear', description: 'Clear current connection' }
             ]
           },
           id
@@ -243,6 +246,113 @@ app.post('/rpc', async (req, res) => {
             id
           });
         }
+      }
+      
+      case 'connection/validate-table-access': {
+        console.log('[SIMPLE-HTTP] Processing connection/validate-table-access request');
+        console.log('[SIMPLE-HTTP] Request params:', JSON.stringify(params));
+        
+        // Check if params is an array (as expected from frontend)
+        const requestData = Array.isArray(params) ? params[0] : params;
+        console.log('[SIMPLE-HTTP] connection/validate-table-access request data:', JSON.stringify(requestData));
+        
+        if (mcpServer) {
+          try {
+            console.log('[SIMPLE-HTTP] Calling mcpServer.validateConnection...');
+            
+            // Extract connection parameters from the request
+            const connectionRequest = {
+              projectId: requestData.projectId,
+              datasetId: requestData.datasetId,
+              tableId: requestData.tableId,
+              privateKey: requestData.privateKey
+            };
+            
+            // If privateKey is 'default', try to use the default key
+            if (connectionRequest.privateKey === 'default') {
+              console.log('[SIMPLE-HTTP] Using default private key from environment variables');
+              connectionRequest.privateKey = process.env.GOOGLE_APPLICATION_CREDENTIALS || '';
+            }
+            
+            // Call the validateConnection method from the MCP server
+            const validationResult = await mcpServer.validateConnection(connectionRequest);
+            
+            console.log('[SIMPLE-HTTP] validateConnection result:', JSON.stringify(validationResult));
+            
+            return res.json({
+              jsonrpc: '2.0',
+              result: validationResult,
+              id
+            });
+          } catch (error) {
+            console.error('[SIMPLE-HTTP] Error in connection/validate-table-access:', error);
+            return res.status(500).json({
+              jsonrpc: '2.0',
+              error: {
+                code: -32603,
+                message: error instanceof Error ? error.message : 'Error validating connection',
+                data: error instanceof Error ? error.stack : undefined
+              },
+              id
+            });
+          }
+        } else {
+          // Fallback if MCP server is not initialized
+          console.log('[SIMPLE-HTTP] MCP server not initialized, returning error');
+          return res.json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: 'MCP server not initialized, cannot validate connection'
+            },
+            id
+          });
+        }
+      }
+      
+      case 'connection/status': {
+        console.log('[SIMPLE-HTTP] Processing connection/status request');
+        
+        // For simple-http-server, we don't have session management
+        // So we'll return a basic response based on environment variables
+        const isConnected = !!(process.env.GOOGLE_CLOUD_PROJECT_ID && 
+                             process.env.BIGQUERY_DATASET_ID && 
+                             process.env.BIGQUERY_TABLE_ID);
+        
+        const connectionDetails = isConnected ? {
+          projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+          datasetId: process.env.BIGQUERY_DATASET_ID,
+          tableId: process.env.BIGQUERY_TABLE_ID,
+          isConnected: true
+        } : null;
+        
+        console.log('[SIMPLE-HTTP] Connection status:', { isConnected, connectionDetails });
+        
+        return res.json({
+          jsonrpc: '2.0',
+          result: {
+            isConnected,
+            connectionDetails
+          },
+          id
+        });
+      }
+      
+      case 'connection/clear': {
+        console.log('[SIMPLE-HTTP] Processing connection/clear request');
+        
+        // For simple-http-server, we don't have session management
+        // So we'll just return a success response
+        console.log('[SIMPLE-HTTP] Connection cleared (no-op in simple-http-server)');
+        
+        return res.json({
+          jsonrpc: '2.0',
+          result: {
+            success: true,
+            message: 'Connection cleared'
+          },
+          id
+        });
       }
         
       default: {
