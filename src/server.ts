@@ -788,6 +788,40 @@ export class ReportingMCPServer {
                   privateKey: params.privateKey
                 };
                 
+                // If privateKey is not provided, try to use a default key from table mappings
+                if (!connectionRequest.privateKey) {
+                  console.log('[RPC] No privateKey provided, attempting to use default mapping');
+                  try {
+                    // Import the function directly from the module
+                    const { getDefaultPrivateKey } = require('./utils/table-mapping-utils');
+                    const defaultKey = await getDefaultPrivateKey(connectionRequest.projectId, connectionRequest.datasetId, connectionRequest.tableId);
+                    if (defaultKey) {
+                      console.log('[RPC] Found default private key for the requested table');
+                      connectionRequest.privateKey = defaultKey;
+                    } else {
+                      console.log('[RPC] No default private key found');
+                      return res.status(400).json({
+                        jsonrpc: '2.0',
+                        error: { 
+                          code: -32602, 
+                          message: 'No privateKey provided and no default mapping found for the specified table' 
+                        },
+                        id
+                      });
+                    }
+                  } catch (error) {
+                    console.error('[RPC] Error getting default private key:', error);
+                    return res.status(500).json({
+                      jsonrpc: '2.0',
+                      error: { 
+                        code: -32603, 
+                        message: 'Error retrieving default private key' 
+                      },
+                      id
+                    });
+                  }
+                }
+                
                 console.log('[RPC] Calling validateConnection');
                 const validationResult = await validateConnection(connectionRequest);
                 

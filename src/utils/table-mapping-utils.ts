@@ -193,3 +193,28 @@ export async function validateAdminKey(adminKey: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Gets the default private key for a table from mappings
+ */
+export async function getDefaultPrivateKey(
+  projectId: string,
+  datasetId: string,
+  tableId: string
+): Promise<string | null> {
+  try {
+    const mappings = await getTableMappings();
+    const key = `${projectId}.${datasetId}.${tableId}`;
+    
+    if (mappings[key]) {
+      logFlow('TABLE-MAPPING', 'INFO', 'Default private key found for table', { key });
+      return mappings[key];
+    } else {
+      logFlow('TABLE-MAPPING', 'INFO', 'No default private key found for table', { key });
+      return null;
+    }
+  } catch (error) {
+    logFlow('TABLE-MAPPING', 'ERROR', 'Error getting default private key', error);
+    return null;
+  }
+}
