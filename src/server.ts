@@ -10,6 +10,8 @@ import { ReportRegistry } from './services/report-registry.js';
 // Import connection router and UI injector
 import { connectionRouter } from './routes/connection-router.js';
 import { createConnectionUIMiddleware } from './utils/connection-ui-injector.js';
+import { validateConnection } from './services/connection-handler.js';
+import { ValidateConnectionRequest, ValidateConnectionResponse } from './types/session-types.js';
 
 // Import service modules 
 import { SchemaManager } from './services/schema-manager.js';
@@ -44,6 +46,7 @@ declare module 'express-session' {
       datasetId: string;
       tableId: string;
     };
+    isAdmin?: boolean;
   }
 }
 
@@ -611,7 +614,10 @@ export class ReportingMCPServer {
                 result: {
                   tools: [
                     { name: 'analyze_actions_data', description: 'Analyze crypto transaction data' },
-                    { name: 'test_connection', description: 'Test connection to MCP server' }
+                    { name: 'test_connection', description: 'Test connection to MCP server' },
+                    { name: 'connection/validate-table-access', description: 'Validate BigQuery table access' },
+                    { name: 'connection/status', description: 'Get current connection status' },
+                    { name: 'connection/clear', description: 'Clear current connection' }
                   ]
                 },
                 id
@@ -757,6 +763,116 @@ export class ReportingMCPServer {
                     code: -32603,
                     message: analyzeError instanceof Error ? analyzeError.message : 'Error processing analyze_actions_data',
                     data: analyzeError instanceof Error ? analyzeError.stack : undefined
+                  },
+                  id
+                });
+              }
+              
+            case 'connection/validate-table-access':
+              console.log('[RPC] Processing connection/validate-table-access request');
+              if (!params || typeof params !== 'object') {
+                console.log('[RPC] Invalid params for connection/validate-table-access:', params);
+                return res.status(400).json({
+                  jsonrpc: '2.0',
+                  error: { code: -32602, message: 'Invalid params for connection/validate-table-access' },
+                  id
+                });
+              }
+              
+              try {
+                // Extract connection parameters from the request
+                const connectionRequest: ValidateConnectionRequest = {
+                  projectId: params.projectId,
+                  datasetId: params.datasetId,
+                  tableId: params.tableId,
+                  privateKey: params.privateKey
+                };
+                
+                console.log('[RPC] Calling validateConnection');
+                const validationResult = await validateConnection(connectionRequest);
+                
+                console.log('[RPC] validateConnection result received:', {
+                  success: validationResult.success,
+                  message: validationResult.message
+                });
+                
+                return res.json({
+                  jsonrpc: '2.0',
+                  result: validationResult,
+                  id
+                });
+              } catch (error) {
+                console.error('[RPC] Error in validateConnection:', error);
+                return res.status(500).json({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : 'Error validating connection',
+                    data: error instanceof Error ? error.stack : undefined
+                  },
+                  id
+                });
+              }
+              
+            case 'connection/status':
+              console.log('[RPC] Processing connection/status request');
+              
+              try {
+                // Check if there's an active session with connection details
+                const isConnected = !!req.session?.connectionDetails?.isConnected;
+                const connectionDetails = req.session?.connectionDetails || null;
+                
+                console.log('[RPC] Connection status:', { isConnected, connectionDetails });
+                
+                return res.json({
+                  jsonrpc: '2.0',
+                  result: {
+                    isConnected,
+                    connectionDetails
+                  },
+                  id
+                });
+              } catch (error) {
+                console.error('[RPC] Error getting connection status:', error);
+                return res.status(500).json({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : 'Error getting connection status',
+                    data: error instanceof Error ? error.stack : undefined
+                  },
+                  id
+                });
+              }
+              
+            case 'connection/clear':
+              console.log('[RPC] Processing connection/clear request');
+              
+              try {
+                // Clear connection details from session
+                if (req.session) {
+                  delete req.session.connectionDetails;
+                  req.session.isAdmin = false;
+                }
+                
+                console.log('[RPC] Connection cleared successfully');
+                
+                return res.json({
+                  jsonrpc: '2.0',
+                  result: {
+                    success: true,
+                    message: 'Connection cleared successfully'
+                  },
+                  id
+                });
+              } catch (error) {
+                console.error('[RPC] Error clearing connection:', error);
+                return res.status(500).json({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : 'Error clearing connection',
+                    data: error instanceof Error ? error.stack : undefined
                   },
                   id
                 });
