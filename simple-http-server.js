@@ -268,11 +268,12 @@ app.post('/rpc', async (req, res) => {
               privateKey: requestData.privateKey
             };
             
-            // If privateKey is 'default', try to use the default key
-            if (connectionRequest.privateKey === 'default') {
-              console.log('[SIMPLE-HTTP] Using default private key from environment variables');
-              connectionRequest.privateKey = process.env.GOOGLE_APPLICATION_CREDENTIALS || '';
-            }
+            // Pass the private key directly for validation
+            // The validateTableMapping function will check if it matches what's in the mappings file
+            console.log('[SIMPLE-HTTP] Using provided private key for validation');
+            
+            // No need to modify the private key - pass it as is
+            // The validateTableMapping function will handle the comparison
             
             // Call the validateConnection method from the MCP server
             const validationResult = await mcpServer.validateConnection(connectionRequest);

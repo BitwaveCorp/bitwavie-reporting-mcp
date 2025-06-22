@@ -62,21 +62,15 @@ export async function validateConnection(
 
     // Test the connection by running a simple query
     try {
-      // Parse the private key JSON
-      let privateKeyJson;
-      try {
-        privateKeyJson = JSON.parse(request.privateKey);
-      } catch (error) {
-        return {
-          success: false,
-          message: 'Invalid private key JSON format'
-        };
-      }
-
-      // Create BigQuery client with the provided credentials
+      // Use the private key directly without JSON parsing
+      // This allows simple string keys to be used for validation
+      const privateKeyValue = request.privateKey;
+      
+      // Create BigQuery client with application default credentials
+      // We're not using the private key for actual BigQuery access,
+      // just for validating access to the table
       const bigquery = new BigQuery({
-        projectId: request.projectId,
-        credentials: privateKeyJson
+        projectId: request.projectId
       });
 
       // Run a simple query to test the connection
