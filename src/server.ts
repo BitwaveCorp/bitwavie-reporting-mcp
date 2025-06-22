@@ -767,6 +767,7 @@ export class ReportingMCPServer {
                   id
                 });
               }
+              break;
               
             case 'connection/validate-table-access':
               console.log('[RPC] Processing connection/validate-table-access request');
@@ -845,10 +846,11 @@ export class ReportingMCPServer {
                     data: error instanceof Error ? error.stack : undefined
                   },
                   id
-                });
-              }
-              
-            case 'connection/status':
+              });
+            }
+            break;
+            
+          case 'connection/status':
               console.log('[RPC] Processing connection/status request');
               
               try {
@@ -878,6 +880,7 @@ export class ReportingMCPServer {
                   id
                 });
               }
+              break;
               
             case 'connection/clear':
               console.log('[RPC] Processing connection/clear request');
@@ -911,6 +914,7 @@ export class ReportingMCPServer {
                   id
                 });
               }
+              break;
               
             default:
               console.log(`[RPC] Method not found: ${method}`);
