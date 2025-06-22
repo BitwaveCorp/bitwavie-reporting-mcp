@@ -83,10 +83,10 @@ export async function getTableMappings(): Promise<Record<string, string>> {
         mappingKeys: Object.keys(mappings)
       });
       return mappings;
-    } catch (readError) {
+    } catch (readError: unknown) {
       // If file doesn't exist or can't be read, create a default one
-      if (readError.code === 'ENOENT') {
-        logFlow('TABLE-MAPPING', 'WARN', `Table mappings file not found at ${TABLE_MAPPINGS_FILE}, creating default`);
+      if (readError instanceof Error && 'code' in readError && readError.code === 'ENOENT') {
+        logFlow('TABLE-MAPPING', 'INFO', `Table mappings file not found at ${TABLE_MAPPINGS_FILE}, creating default`);
         
         // Create default mappings with the USDC table
         const defaultMappings = {
@@ -101,11 +101,17 @@ export async function getTableMappings(): Promise<Record<string, string>> {
       }
       
       // For other errors, log and return empty object
-      logFlow('TABLE-MAPPING', 'ERROR', `Error reading table mappings from ${TABLE_MAPPINGS_FILE}`, readError);
+      logFlow('TABLE-MAPPING', 'ERROR', `Error reading table mappings from ${TABLE_MAPPINGS_FILE}`, {
+        errorMessage: readError instanceof Error ? readError.message : String(readError),
+        errorType: readError instanceof Error ? readError.name : typeof readError
+      });
       return {};
     }
-  } catch (error) {
-    logFlow('TABLE-MAPPING', 'ERROR', 'Error in getTableMappings', error);
+  } catch (error: unknown) {
+    logFlow('TABLE-MAPPING', 'ERROR', 'Error in getTableMappings', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorType: error instanceof Error ? error.name : typeof error
+    });
     return {};
   }
 }
