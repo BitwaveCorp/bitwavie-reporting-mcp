@@ -831,6 +831,19 @@ export class ReportingMCPServer {
                   message: validationResult.message
                 });
                 
+                // Store connection details in session if validation was successful
+                if (validationResult.success && validationResult.connectionDetails) {
+                  // Update session with connection details
+                  req.session.connectionDetails = {
+                    projectId: validationResult.connectionDetails.projectId,
+                    datasetId: validationResult.connectionDetails.datasetId,
+                    tableId: validationResult.connectionDetails.tableId,
+                    isConnected: true
+                  };
+                  
+                  console.log('[RPC] Connection details stored in session:', req.session.connectionDetails);
+                }
+                
                 return res.json({
                   jsonrpc: '2.0',
                   result: validationResult,
