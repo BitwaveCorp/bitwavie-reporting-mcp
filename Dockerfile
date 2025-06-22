@@ -40,6 +40,14 @@ COPY --from=builder /app/test-rpc.js ./
 COPY --from=builder /app/simple-http-server.js ./
 COPY --from=builder /app/start-simple-server.sh ./
 
+# Copy data directory with table mappings
+COPY --from=builder /app/data ./data
+
+# Ensure data directory has the right permissions
+RUN mkdir -p /app/data && \
+    chown -R mcp-server:nodejs /app/data && \
+    chmod -R 755 /app/data
+
 # Print file contents for debugging
 RUN ls -la && echo "Content of start-simple-server.sh:" && cat start-simple-server.sh
 

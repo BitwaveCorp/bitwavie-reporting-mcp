@@ -9,7 +9,12 @@ import * as path from 'path';
 import { logFlow } from './logging.js';
 
 // Constants for file paths
-const DATA_DIR = path.join(process.cwd(), 'data');
+// Check for alternative data directory paths (useful for Docker environments)
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+
+// Log the data directory path for debugging
+logFlow('TABLE-MAPPING', 'INFO', `Using data directory: ${DATA_DIR}`);
+
 const TABLE_MAPPINGS_FILE = path.join(DATA_DIR, 'table-mappings.json');
 const ADMIN_KEYS_FILE = path.join(DATA_DIR, 'admin-keys.json');
 
@@ -63,15 +68,44 @@ export async function ensureDataFilesExist(): Promise<void> {
 }
 
 /**
- * Reads the table mappings from file
+ * Gets table mappings from file
  */
 export async function getTableMappings(): Promise<Record<string, string>> {
   try {
     await ensureDataFilesExist();
-    const data = await fs.readFile(TABLE_MAPPINGS_FILE, 'utf8');
-    return JSON.parse(data);
+    
+    try {
+      // Try to read the file
+      const data = await fs.readFile(TABLE_MAPPINGS_FILE, 'utf8');
+      const mappings = JSON.parse(data);
+      logFlow('TABLE-MAPPING', 'INFO', `Successfully loaded table mappings from ${TABLE_MAPPINGS_FILE}`, {
+        mappingCount: Object.keys(mappings).length,
+        mappingKeys: Object.keys(mappings)
+      });
+      return mappings;
+    } catch (readError) {
+      // If file doesn't exist or can't be read, create a default one
+      if (readError.code === 'ENOENT') {
+        logFlow('TABLE-MAPPING', 'WARN', `Table mappings file not found at ${TABLE_MAPPINGS_FILE}, creating default`);
+        
+        // Create default mappings with the USDC table
+        const defaultMappings = {
+          "bitwave-solutions.0_Bitwavie_MCP.USDC": "USDCkey"
+        };
+        
+        // Write the default mappings to file
+        await fs.writeFile(TABLE_MAPPINGS_FILE, JSON.stringify(defaultMappings, null, 2));
+        logFlow('TABLE-MAPPING', 'INFO', `Created default table mappings file at ${TABLE_MAPPINGS_FILE}`);
+        
+        return defaultMappings;
+      }
+      
+      // For other errors, log and return empty object
+      logFlow('TABLE-MAPPING', 'ERROR', `Error reading table mappings from ${TABLE_MAPPINGS_FILE}`, readError);
+      return {};
+    }
   } catch (error) {
-    logFlow('TABLE-MAPPING', 'ERROR', 'Error reading table mappings', error);
+    logFlow('TABLE-MAPPING', 'ERROR', 'Error in getTableMappings', error);
     return {};
   }
 }
