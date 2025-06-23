@@ -51,9 +51,68 @@ declare module 'express-session' {
 }
 
 // Utility functions
+
+/**
+ * Safely stringify an object, handling circular references
+ * @param obj The object to stringify
+ * @param indent Optional indentation for pretty printing
+ * @returns A string representation of the object
+ */
+function safeStringify(obj: any, indent: number = 0): string {
+  if (obj === null || obj === undefined) {
+    return String(obj);
+  }
+  
+  if (typeof obj !== 'object') {
+    return String(obj);
+  }
+  
+  try {
+    // Handle circular references
+    const cache: any[] = [];
+    return JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        // Check for circular reference
+        if (cache.includes(value)) {
+          return '[Circular Reference]';
+        }
+        cache.push(value);
+      }
+      
+      // Handle special cases
+      if (value instanceof Error) {
+        return `Error: ${value.message}`;
+      }
+      
+      // Handle functions
+      if (typeof value === 'function') {
+        return '[Function]';
+      }
+      
+      // Return normal values
+      return value;
+    }, indent);
+  } catch (e) {
+    return '[Object - Unable to stringify]';
+  }
+}
+
 function logFlow(component: string, level: string, message: string, error?: any): void {
   const timestamp = new Date().toISOString();
-  const errorMsg = error ? ` | Error: ${error instanceof Error ? error.message : error}` : '';
+  
+  // Handle error parameter safely
+  let errorMsg = '';
+  if (error) {
+    if (error instanceof Error) {
+      errorMsg = ` | Error: ${error.message}`;
+    } else if (typeof error === 'object') {
+      // Use safeStringify for objects
+      errorMsg = ` | Data: ${safeStringify(error)}`;
+    } else {
+      errorMsg = ` | Data: ${String(error)}`;
+    }
+  }
+  
   console.log(`[${timestamp}] ${component} ${level}: ${message}${errorMsg}`);
 }
 
