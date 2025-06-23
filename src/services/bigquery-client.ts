@@ -186,7 +186,26 @@ export class BigQueryClient {
   }
   
   constructor() {
-    // Initialize empty - configuration happens via configure()
+    // Configuration will be done later via configure()
+    this.config = null;
+    this.columnsFetched = false;
+    this.availableColumns = [];
+    
+    // Log that the BigQueryClient instance has been created
+    console.log('[BigQueryClient] Instance created - configuration will be done later');
+  }
+  
+  /**
+   * Factory method to create and configure a BigQueryClient instance
+   * @param config The base configuration (usually from environment variables)
+   * @param sessionConnectionDetails Optional session connection details to prioritize
+   * @returns Configured BigQueryClient instance
+   */
+  static async create(config: BigQueryConfig, sessionConnectionDetails?: ConnectionDetails): Promise<BigQueryClient> {
+    const client = new BigQueryClient();
+    // Use the enhanced configure method that can prioritize session connection details
+    await client.configure(config, sessionConnectionDetails);
+    return client;
   }
   
   // ========================================================================
@@ -317,7 +336,43 @@ export class BigQueryClient {
   // CONFIGURATION
   // ========================================================================
   
-  async configure(config: BigQueryConfig): Promise<void> {
+  async configure(config: BigQueryConfig, sessionConnectionDetails?: ConnectionDetails): Promise<void> {
+    // Check if we have valid session connection details that should be prioritized
+    if (sessionConnectionDetails && sessionConnectionDetails.isConnected) {
+      console.log('[BigQueryClient] Prioritizing session connection details over provided config');
+      
+      // Create a new config that uses session connection details but preserves authentication from the provided config
+      const sessionConfig: BigQueryConfig = {
+        projectId: sessionConnectionDetails.projectId,
+        datasetId: sessionConnectionDetails.datasetId,
+        tableId: sessionConnectionDetails.tableId,
+        // Preserve authentication method from the provided config
+        credentials: config.credentials
+      };
+      
+      // Only add keyFilename if it exists in the original config
+      if (config.keyFilename) {
+        sessionConfig.keyFilename = config.keyFilename;
+      }
+      
+      // Use the session-based config instead
+      config = sessionConfig;
+      
+      console.log('[BigQueryClient] Using session connection details:', {
+        projectId: config.projectId,
+        datasetId: config.datasetId,
+        tableId: config.tableId,
+        source: 'session'
+      });
+    } else {
+      console.log('[BigQueryClient] Using provided config (likely from environment variables):', {
+        projectId: config.projectId,
+        datasetId: config.datasetId,
+        tableId: config.tableId,
+        source: 'environment'
+      });
+    }
+    
     logFlow('CONFIGURE', 'ENTRY', 'Configuring BigQuery client', { 
       projectId: config.projectId,
       datasetId: config.datasetId,
@@ -447,11 +502,7 @@ export class BigQueryClient {
       
       return {
         success: false,
-        error: {
-          type: 'COMPUTATION_ERROR',
-          message: errorMessage,
-          suggestions: this.getErrorSuggestions(error)
-        },
+        error: { type: 'COMPUTATION_ERROR', message: errorMessage },
         metadata: {
           rows_processed: 0,
           execution_time_ms: executionTime,
@@ -807,22 +858,11 @@ export class BigQueryClient {
       // Save the original configuration to restore later if needed
       const originalConfig = this.config;
       
-      // Create a new configuration with the session connection details
-      const sessionConfig: BigQueryConfig = {
-        projectId: connectionDetails.projectId,
-        datasetId: connectionDetails.datasetId,
-        tableId: connectionDetails.tableId,
-        // Keep the same authentication method
-        credentials: originalConfig?.credentials
-      };
-      
-      // Only add keyFilename if it exists in the original config
-      if (originalConfig?.keyFilename) {
-        sessionConfig.keyFilename = originalConfig.keyFilename;
+      // Use the enhanced configure method that prioritizes session connection details
+      // Make sure originalConfig is not null before using it
+      if (originalConfig) {
+        await this.configure(originalConfig, connectionDetails);
       }
-      
-      // Configure the client with the new details
-      await this.configure(sessionConfig);
       
       logFlow('RECONFIGURE', 'EXIT', 'Successfully reconfigured BigQuery client with session connection details');
     } catch (error) {
