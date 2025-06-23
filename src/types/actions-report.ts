@@ -3,6 +3,8 @@
  * Based on the 64-column Actions Report structure
  */
 
+import { ConnectionDetails } from './session-types.js';
+
 // ============================================================================
 // ACTIONS REPORT - Core Data Structure (64 columns)
 // ============================================================================
@@ -174,11 +176,7 @@ export interface ReportParameters {
   runId?: string;
   orgId?: string;
   limit?: number; // Maximum number of rows to return (default: 5000)
-  connectionDetails?: {
-    projectId: string;
-    datasetId: string;
-    tableId: string;
-  };
+  connectionDetails?: ConnectionDetails;
 }
 
 export interface QueryRequest {

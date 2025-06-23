@@ -19,13 +19,7 @@ import {
   QueryResult,
   ReportParameters 
 } from '../types/actions-report.js';
-
-// Connection details interface for session-based connections
-interface ConnectionDetails {
-  projectId: string;
-  datasetId: string;
-  tableId: string;
-}
+import { ConnectionDetails } from '../types/session-types.js';
 
 // Enhanced logging function with timestamps and flow tracking
 const logFlow = (stage: string, direction: 'ENTRY' | 'EXIT' | 'ERROR' | 'INFO', message: string, data: any = null) => {
@@ -411,7 +405,7 @@ export class BigQueryClient {
       
       // Execute query
       logFlow('SQL_EXECUTE', 'ENTRY', 'Executing SQL query against BigQuery');
-      const results = await this.executeQuery(sql);
+      const results = await this.executeQuery(sql, parameters.connectionDetails);
       logFlow('SQL_EXECUTE', 'EXIT', 'SQL query execution completed', { rowCount: results.length });
       
       // Cache results
@@ -512,7 +506,7 @@ export class BigQueryClient {
       const parameterizedSQL = this.replaceParameters(reportSql, parameters);
       logFlow('SQL_GENERATION', 'INFO', 'Generated parameterized SQL', { sql: parameterizedSQL });
     
-      const results = await this.executeQuery(parameterizedSQL);
+      const results = await this.executeQuery(parameterizedSQL, parameters.connectionDetails);
       logFlow('REPORT_QUERY', 'EXIT', 'Report query execution completed', { rowCount: results.length });
       
       return {
@@ -623,6 +617,14 @@ export class BigQueryClient {
     if (!this.config) {
       throw new Error('BigQuery not configured');
     }
+    
+    // Log which connection details are being used
+    console.log('[BigQueryClient] buildFromClause using connection details:', {
+      projectId: this.config.projectId,
+      datasetId: this.config.datasetId,
+      tableId: this.config.tableId,
+      source: 'current configuration'
+    });
     
     return `FROM \`${this.config.projectId}.${this.config.datasetId}.${this.config.tableId}\``;
   }
@@ -782,10 +784,17 @@ export class BigQueryClient {
    * @param connectionDetails The connection details from the user session
    */
   private async reconfigureWithConnectionDetails(connectionDetails: ConnectionDetails): Promise<void> {
+    // Only reconfigure if connection is marked as connected
+    if (!connectionDetails.isConnected) {
+      console.log('[BigQueryClient] Connection details marked as not connected, skipping reconfiguration');
+      return;
+    }
+    
     logFlow('RECONFIGURE', 'ENTRY', 'Reconfiguring BigQuery client with session connection details', { 
       projectId: connectionDetails.projectId,
       datasetId: connectionDetails.datasetId,
-      tableId: connectionDetails.tableId
+      tableId: connectionDetails.tableId,
+      isConnected: connectionDetails.isConnected
     });
     
     try {
@@ -817,7 +826,38 @@ export class BigQueryClient {
     }
   }
   
-  private async executeQuery(sql: string): Promise<any[]> {
+  private async executeQuery(sql: string, connectionDetails?: ConnectionDetails): Promise<any[]> {
+    // If connection details are provided, temporarily reconfigure the client
+    if (connectionDetails) {
+      try {
+        console.log('[BigQueryClient] Attempting to use session connection details for query:', {
+          projectId: connectionDetails.projectId,
+          datasetId: connectionDetails.datasetId,
+          tableId: connectionDetails.tableId,
+          isConnected: connectionDetails.isConnected
+        });
+        
+        await this.reconfigureWithConnectionDetails(connectionDetails);
+        
+        // After reconfiguration, log the current configuration being used
+        console.log('[BigQueryClient] Current configuration after reconfiguration:', {
+          projectId: this.config?.projectId,
+          datasetId: this.config?.datasetId,
+          tableId: this.config?.tableId,
+          source: 'session'
+        });
+      } catch (error) {
+        console.error('[BigQueryClient] Failed to use session connection details, falling back to environment variables:', error);
+      }
+    } else {
+      // Log that we're using environment variables
+      console.log('[BigQueryClient] No session connection details provided, using environment variables:', {
+        projectId: this.config?.projectId,
+        datasetId: this.config?.datasetId,
+        tableId: this.config?.tableId,
+        source: 'environment'
+      });
+    }
     if (!this.bigquery) {
       logFlow('EXECUTE_QUERY', 'ERROR', 'BigQuery client not initialized');
       throw new Error('BigQuery client not initialized');
