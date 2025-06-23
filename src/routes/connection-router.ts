@@ -299,13 +299,42 @@ const clearConnection: RequestHandler = (req, res) => {
   }
 };
 
+// Debug endpoint to show session details
+const getSessionDetails: RequestHandler = async (req, res) => {
+  try {
+    // Extract session details safely
+    const sessionDetails = {
+      hasSession: !!req.session,
+      connectionDetails: req.session?.connectionDetails || null,
+      privateKeyExists: !!(req.session as any)?.privateKey,
+      sessionID: req.sessionID,
+      sessionKeys: req.session ? Object.keys(req.session) : [],
+      timestamp: new Date().toISOString()
+    };
+    
+    logFlow('CONNECTION-ROUTES', 'INFO', 'Session details requested', {
+      sessionID: req.sessionID,
+      hasConnectionDetails: !!req.session?.connectionDetails
+    });
+    
+    res.json(sessionDetails);
+  } catch (error) {
+    logFlow('CONNECTION-ROUTES', 'ERROR', 'Error getting session details', { error });
+    res.status(500).json({
+      error: 'Failed to get session details',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
 // Register routes
 router.post('/validate-table-access', validateTableAccess);
 router.post('/admin/verify', verifyAdminKey);
 router.get('/admin/status', checkAdminStatus);
 router.post('/admin/logout', logoutAdmin);
 router.get('/admin/mappings', getTableMappings);
-router.post('/admin/mappings', addTableMapping);
-router.delete('/admin/mappings/:name', removeTableMapping);
-router.get('/connection/status', checkConnectionStatus);
-router.post('/connection/clear', clearConnection);
+router.post('/admin/mappings/add', addTableMapping);
+router.post('/admin/mappings/remove', removeTableMapping);
+router.get('/status', checkConnectionStatus);
+router.post('/clear', clearConnection);
+router.get('/session-details', getSessionDetails);
