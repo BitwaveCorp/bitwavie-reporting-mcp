@@ -268,6 +268,12 @@ interface AnalyzeDataRequest {
   query?: string;
   confirmedMappings?: Record<string, string>;
   previousResponse?: any;
+  connectionDetails?: {
+    projectId?: string;
+    datasetId?: string;
+    tableId?: string;
+    privateKey?: string;
+  };
 }
 
 export interface AnalyzeDataResponse {
@@ -1145,6 +1151,37 @@ export class ReportingMCPServer {
       
       // Always use enhanced NLQ flow
       if (this.llmQueryTranslator) {
+        // If connection details are in the request, make sure they're available to processEnhancedNLQ
+        if (request.connectionDetails && req) {
+          // Store connection details in session if available
+          if (!req.session) {
+            req.session = {} as any;
+          }
+          
+          if (!req.session.connectionDetails) {
+            // Create a properly typed ConnectionDetails object with all required properties
+            // Store the connection details in the session according to the ConnectionDetails interface
+            req.session.connectionDetails = {
+              projectId: request.connectionDetails.projectId || '',
+              datasetId: request.connectionDetails.datasetId || '',
+              tableId: request.connectionDetails.tableId || '',
+              isConnected: true // Add the required isConnected property
+            };
+            
+            // Store the private key separately if needed
+            if (request.connectionDetails.privateKey) {
+              (req.session as any).privateKey = request.connectionDetails.privateKey;
+            }
+            
+            console.log('[handleAnalyzeData] Stored connection details from request in session:', {
+              projectId: req.session.connectionDetails.projectId || 'Not provided',
+              datasetId: req.session.connectionDetails.datasetId || 'Not provided',
+              tableId: req.session.connectionDetails.tableId || 'Not provided',
+              hasPrivateKey: !!request.connectionDetails.privateKey
+            });
+          }
+        }
+        
         const result = await this.processEnhancedNLQ(sessionId, query, req);
     
     // D. RAWDATA_CHECKER - In handleAnalyzeData after processEnhancedNLQ
@@ -1929,13 +1966,33 @@ export class ReportingMCPServer {
       // Extract connection details from request if available
       let connectionDetails: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string } | undefined;
       
+      // First check if connection details are in the request parameter (from simple-http-server)
       if (req?.body?.connectionDetails) {
         connectionDetails = req.body.connectionDetails;
-        console.log('[processEnhancedNLQ] Using connection details from request:', {
+        console.log('[processEnhancedNLQ] Using connection details from request.body:', {
           projectId: connectionDetails?.projectId || 'Not provided',
           datasetId: connectionDetails?.datasetId || 'Not provided',
           tableId: connectionDetails?.tableId || 'Not provided',
-          hasPrivateKey: !!connectionDetails?.privateKey
+          hasPrivateKey: !!connectionDetails?.privateKey,
+          source: 'request.body'
+        });
+      } 
+      // Then check if connection details are in the session (from express session)
+      else if (req?.session?.connectionDetails) {
+        connectionDetails = {
+          projectId: req.session.connectionDetails.projectId,
+          datasetId: req.session.connectionDetails.datasetId,
+          tableId: req.session.connectionDetails.tableId,
+          // Get privateKey from session if it exists
+          privateKey: (req.session as any).privateKey
+        };
+        
+        console.log('[processEnhancedNLQ] Using connection details from session:', {
+          projectId: connectionDetails.projectId || 'Not provided',
+          datasetId: connectionDetails.datasetId || 'Not provided',
+          tableId: connectionDetails.tableId || 'Not provided',
+          hasPrivateKey: !!(req.session as any).privateKey,
+          source: 'session'
         });
       }
       

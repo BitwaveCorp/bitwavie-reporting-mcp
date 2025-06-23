@@ -19,7 +19,20 @@ const sessionStorage = {
 function getCurrentConnectionDetails() {
   // Use session storage if available
   if (sessionStorage.isConnected && sessionStorage.connectionDetails) {
-    console.log('[SIMPLE-HTTP] Using session connection details for query');
+    const sessionDetails = {
+      projectId: sessionStorage.connectionDetails.projectId,
+      datasetId: sessionStorage.connectionDetails.datasetId,
+      tableId: sessionStorage.connectionDetails.tableId,
+      privateKey: sessionStorage.connectionDetails.privateKey ? '[REDACTED]' : undefined
+    };
+    
+    console.log('[SIMPLE-HTTP] Using session connection details for query:', {
+      projectId: sessionDetails.projectId,
+      datasetId: sessionDetails.datasetId,
+      tableId: sessionDetails.tableId,
+      hasPrivateKey: !!sessionDetails.privateKey
+    });
+    
     return {
       projectId: sessionStorage.connectionDetails.projectId,
       datasetId: sessionStorage.connectionDetails.datasetId,
@@ -29,12 +42,15 @@ function getCurrentConnectionDetails() {
   }
   
   // Fall back to environment variables
-  console.log('[SIMPLE-HTTP] Using environment variables for query');
-  return {
+  const envDetails = {
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     datasetId: process.env.BIGQUERY_DATASET_ID,
     tableId: process.env.BIGQUERY_TABLE_ID
   };
+  
+  console.log('[SIMPLE-HTTP] Using environment variables for query:', envDetails);
+  
+  return envDetails;
 }
 
 // Log configuration
