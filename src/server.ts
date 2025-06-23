@@ -1145,7 +1145,7 @@ export class ReportingMCPServer {
           logFlow('SERVER', 'INFO', 'Attempting to reconstruct previousResponse from context');
         }
         
-        return this.handleConfirmationResponse(request);
+        return this.handleConfirmationResponse(request, req);
       }
       
       // Generate session ID for new queries
@@ -2137,7 +2137,7 @@ export class ReportingMCPServer {
     };
   }
   
-  private async handleConfirmationResponse(request: AnalyzeDataRequest): Promise<AnalyzeDataResponse> {
+  private async handleConfirmationResponse(request: AnalyzeDataRequest, req?: express.Request): Promise<AnalyzeDataResponse> {
     try {
       logFlow('SERVER', 'INFO', 'Processing confirmation response');
       
@@ -2217,7 +2217,7 @@ export class ReportingMCPServer {
       this.sessions.set(sessionId, sessionData);
       
       // Execute confirmed queries and format results
-      return this.executeAndFormatQuery(sessionId, sqlToExecute);
+      return this.executeAndFormatQuery(sessionId, sqlToExecute, undefined, undefined, undefined, req);
     } catch (error) {
       logFlow('SERVER', 'ERROR', 'Error processing confirmation response:', error);
       return {
@@ -2261,7 +2261,8 @@ export class ReportingMCPServer {
       
       // Get connection details from the request session if available
       let connectionDetails;
-      if (req?.session?.connectionDetails) {
+      // Only try to access session if req is provided
+      if (req && req.session && req.session.connectionDetails) {
         connectionDetails = {
           projectId: req.session.connectionDetails.projectId,
           datasetId: req.session.connectionDetails.datasetId,
@@ -2271,7 +2272,13 @@ export class ReportingMCPServer {
         };
         
         logFlow('WALKTHROUGH_SHOWTABLE8', 'INFO', 'Using session connection details for query execution', {
-          connectionDetails,
+          connectionDetails: {
+            projectId: connectionDetails.projectId,
+            datasetId: connectionDetails.datasetId,
+            tableId: connectionDetails.tableId,
+            hasPrivateKey: !!connectionDetails.privateKey,
+            isConnected: connectionDetails.isConnected
+          },
           source: 'session'
         });
       } else {
