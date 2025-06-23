@@ -2065,12 +2065,24 @@ export class ReportingMCPServer {
           privateKey: (req.session as any).privateKey || ''
         };
         
+        // Add session object reference to help ConnectionManager find privateKey
+        // This allows ConnectionManager to check both connectionDetails.privateKey and session.privateKey
+        (connectionDetails as any).session = req.session;
+        
         console.log('[processEnhancedNLQ] Using connection details from session:', {
           projectId: connectionDetails.projectId || 'Not provided',
           datasetId: connectionDetails.datasetId || 'Not provided',
           tableId: connectionDetails.tableId || 'Not provided',
           hasPrivateKey: !!(req.session as any).privateKey,
           source: 'session'
+        });
+        
+        // Log detailed session information for debugging
+        logFlow('SERVER', 'INFO', 'Session details debug', {
+          sessionId: req.sessionID,
+          hasConnectionDetails: !!req.session.connectionDetails,
+          connectionDetailsKeys: req.session.connectionDetails ? Object.keys(req.session.connectionDetails) : [],
+          hasPrivateKey: !!(req.session as any).privateKey
         });
       }
       
