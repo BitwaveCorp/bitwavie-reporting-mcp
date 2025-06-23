@@ -5,6 +5,8 @@
  * supporting both environment variables and session-based connection details.
  */
 
+import { logFlow } from "../utils/logging";
+
 export class ConnectionManager {
   private static instance: ConnectionManager;
   
@@ -26,6 +28,10 @@ export class ConnectionManager {
    * @returns Project ID string
    */
   public getProjectId(sessionDetails?: any): string {
+    logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getProjectId', {
+      projectId: sessionDetails?.projectId,
+      source: sessionDetails ? 'session' : 'environment'
+    });
     return sessionDetails?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID || '';
   }
   
@@ -35,6 +41,10 @@ export class ConnectionManager {
    * @returns Dataset ID string
    */
   public getDatasetId(sessionDetails?: any): string {
+    logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getDatasetId', {
+      datasetId: sessionDetails?.datasetId,
+      source: sessionDetails ? 'session' : 'environment'
+    });
     return sessionDetails?.datasetId || process.env.BIGQUERY_DATASET_ID || '';
   }
   
@@ -44,6 +54,10 @@ export class ConnectionManager {
    * @returns Table ID string
    */
   public getTableId(sessionDetails?: any): string {
+    logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getTableId', {
+      tableId: sessionDetails?.tableId,
+      source: sessionDetails ? 'session' : 'environment'
+    }); 
     return sessionDetails?.tableId || process.env.BIGQUERY_TABLE_ID || '';
   }
   
@@ -53,6 +67,10 @@ export class ConnectionManager {
    * @returns Private key string or undefined
    */
   public getPrivateKey(sessionDetails?: any): string | undefined {
+    logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getPrivateKey', {
+      privateKey: sessionDetails?.privateKey,
+      source: sessionDetails ? 'session' : 'environment'
+    });
     return sessionDetails?.privateKey;
   }
   

@@ -8,6 +8,7 @@
 import { BigQuery } from '@google-cloud/bigquery';
 import { logFlow } from '../utils/logging.js';
 import { LLMQueryTranslator } from './llm-query-translator.js';
+import { ConnectionManager } from './connection-manager.js';
 
 // Types
 export interface ExecutionConfig {
@@ -35,6 +36,14 @@ export interface ExecutionResult {
   };
 }
 
+export interface ConnectionDetails {
+  projectId?: string;
+  datasetId?: string;
+  tableId?: string;
+  privateKey?: string;
+  isConnected?: boolean;
+}
+
 export class QueryExecutor {
   private bigquery: BigQuery;
   private llmTranslator: LLMQueryTranslator | null = null;
@@ -50,6 +59,12 @@ export class QueryExecutor {
     config?: ExecutionConfig
   ) {
     // Initialize BigQuery client
+
+    logFlow('WALKTHROUGH_SHOWTABLE7', 'INFO', 'Initializing BigQuery client', {
+      projectId
+    });
+
+    
     this.bigquery = new BigQuery({
       projectId
     });
@@ -79,7 +94,8 @@ export class QueryExecutor {
    */
   public async executeQuery(
     sql: string,
-    parameters?: Record<string, any>
+    parameters?: Record<string, any>,
+    connectionDetails?: ConnectionDetails
   ): Promise<ExecutionResult> {
     const startTime = Date.now();
     let retryCount = 0;
@@ -89,7 +105,9 @@ export class QueryExecutor {
     logFlow('QUERY_EXECUTOR', 'ENTRY', 'Executing query', {
       sqlLength: sql.length,
       hasParameters: !!parameters,
-      parameterCount: parameters ? Object.keys(parameters).length : 0
+      parameterCount: parameters ? Object.keys(parameters).length : 0,
+      hasConnectionDetails: !!connectionDetails,
+      connectionSource: connectionDetails ? 'session' : 'environment'
     });
     
     // First, validate the SQL
@@ -202,29 +220,44 @@ export class QueryExecutor {
     
     while (retryCount <= (this.config.maxRetries || 2)) {
       try {
-        // Execute the query
-        // Build query options with proper handling of optional parameters
-        const queryOptions: { 
-          query: string; 
-          params?: Record<string, any>; 
-          jobTimeoutMs?: number 
-        } = { 
-          query: currentSql 
+        // If connection details are provided, create a temporary BigQuery client with those details
+        let queryBigquery = this.bigquery;
+        
+        if (connectionDetails && connectionDetails.projectId) {
+          logFlow('QUERY_EXECUTOR', 'INFO', 'Using session connection details for query execution', {
+            projectId: connectionDetails.projectId,
+            source: 'session'
+          });
+          
+          // Create a temporary BigQuery client with the session project ID
+          queryBigquery = new BigQuery({
+            projectId: connectionDetails.projectId
+          });
+        } else {
+          logFlow('QUERY_EXECUTOR', 'INFO', 'Using environment connection details for query execution', {
+            source: 'environment'
+          });
+        }
+        
+        const options: any = {
+          query: currentSql,
+          location: 'US',
+          dryRun: this.config.dryRun || false
         };
         
         // Only add params if defined
         if (parameters) {
-          queryOptions.params = parameters;
+          options.params = parameters;
         }
         
         // Only add timeout if defined
         if (this.config.timeoutMs) {
-          queryOptions.jobTimeoutMs = this.config.timeoutMs;
+          options.jobTimeoutMs = this.config.timeoutMs;
         }
         
         // Execute query and handle response
         // Using any[] to avoid TypeScript errors with BigQuery's response format
-        const response = await this.bigquery.query(queryOptions);
+        const response = await queryBigquery.query(options);
         
         // BigQuery returns results as first element in array
         const rows = response && Array.isArray(response) ? response[0] : [];
@@ -322,10 +355,12 @@ export class QueryExecutor {
       });
       
       // Use BigQuery's dry run feature to validate the SQL
-      const [job] = await this.bigquery.createQueryJob({
+      const options: any = {
         query: sql,
         dryRun: true
-      });
+      };
+      
+      const [job] = await this.bigquery.createQueryJob(options);
       
       logFlow('QUERY_EXECUTOR', 'EXIT', 'SQL validation successful', {
         bytesProcessed: job.metadata.statistics.totalBytesProcessed

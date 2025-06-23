@@ -279,6 +279,8 @@ Only return valid JSON. Do not include any explanations or additional text outsi
       hasConnectionDetails: !!connectionDetails,
       connectionSource: connectionDetails ? 'session' : 'environment'
     });
+
+    
     
     try {
       // Step 0: Check if this is a report query
@@ -642,9 +644,17 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     connectionManager.logConnectionDetails(connectionDetails);
     
     // Get fully qualified table ID from ConnectionManager
+    logFlow('WALKTHROUGH_SHOWTABLE4', 'INFO', 'Show connection details', {
+      connectionDetails
+    });
+
     const tableId = columnName 
       ? connectionManager.getFullyQualifiedTableId(connectionDetails)
       : 'actions'; // Default fallback
+    
+    logFlow('WALKTHROUGH_SHOWTABLE5', 'INFO', 'Getting fully qualified table ID from connection details', {
+      tableId
+    });
     
     // Validate and ensure we have a non-empty aggregation clause
     let selectClause = aggregationComponents.aggregationClause;

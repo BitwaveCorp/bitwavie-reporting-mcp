@@ -371,6 +371,12 @@ export class ReportingMCPServer {
     try {
       // Initialize SchemaManager
       this.schemaManager = new SchemaManager();
+      logFlow('WALKTHROUGH_SHOWTABLE1', 'INFO', 'Initializing SchemaManager: SHOW TABLE', {
+        projectId: this.config.projectId,
+        datasetId: this.config.datasetId,
+        tableId: this.config.tableId,
+        refreshInterval: this.config.schemaRefreshIntervalMs
+      });
       await this.schemaManager.configure({
         projectId: this.config.projectId,
         datasetId: this.config.datasetId,
@@ -1114,6 +1120,12 @@ export class ReportingMCPServer {
   }
 
   public async handleAnalyzeData(request: AnalyzeDataRequest, req?: express.Request): Promise<AnalyzeDataResponse> {
+    logFlow('WALKTHROUGH_SHOWTABLE2', 'INFO', 'handleAnalyzeData: SHOW TABLE', {
+      projectId: this.config.projectId,
+      datasetId: this.config.datasetId,
+      tableId: this.config.tableId,
+      refreshInterval: this.config.schemaRefreshIntervalMs
+    });
     try {
       // Validate input
       if (!request.query && !request.previousResponse) {
@@ -1951,6 +1963,12 @@ export class ReportingMCPServer {
 
   private async processEnhancedNLQ(sessionId: string, query: string, req?: express.Request): Promise<AnalyzeDataResponse> {
     console.log(`[processEnhancedNLQ] Processing enhanced NLQ for session ${sessionId}, query: ${query}`);
+    logFlow('WALKTHROUGH_SHOWTABLE3', 'INFO', 'processEnhancedNLQ: SHOW TABLE', {
+      projectId: this.config.projectId,
+      datasetId: this.config.datasetId,
+      tableId: this.config.tableId,
+      refreshInterval: this.config.schemaRefreshIntervalMs
+    });
     
     try {
       // Check if this is a slash command
@@ -2086,7 +2104,8 @@ export class ReportingMCPServer {
         translationResult.sql, 
         understandingMessage, 
         queryExplanation,
-        processingSteps
+        processingSteps,
+        req // Pass the request object to access session data
       );
       
     } catch (error) {
@@ -2221,7 +2240,8 @@ export class ReportingMCPServer {
       groupBy?: { description: string; sqlClause: string };
       orderBy?: { description: string; sqlClause: string };
       limit?: { description: string; sqlClause: string };
-    }>
+    }>,
+    req?: express.Request
   ): Promise<AnalyzeDataResponse> {
     console.log('DATA CHECKER [BACKEND] - Starting executeAndFormatQuery');
     console.log('DATA CHECKER [BACKEND] - SQL:', sql.substring(0, 500) + (sql.length > 500 ? '...' : ''));
@@ -2239,7 +2259,26 @@ export class ReportingMCPServer {
         throw new Error('QueryExecutor not initialized');
       }
       
-      const executionResult = await this.queryExecutor.executeQuery(sql);
+      // Get connection details from the request session if available
+      let connectionDetails;
+      if (req?.session?.connectionDetails) {
+        connectionDetails = {
+          projectId: req.session.connectionDetails.projectId,
+          datasetId: req.session.connectionDetails.datasetId,
+          tableId: req.session.connectionDetails.tableId,
+          privateKey: (req.session as any).privateKey,
+          isConnected: req.session.connectionDetails.isConnected
+        };
+        
+        logFlow('WALKTHROUGH_SHOWTABLE8', 'INFO', 'Using session connection details for query execution', {
+          connectionDetails,
+          source: 'session'
+        });
+      } else {
+        logFlow('WALKTHROUGH_SHOWTABLE8', 'INFO', 'No session connection details found, using environment variables');
+      }
+      
+      const executionResult = await this.queryExecutor.executeQuery(sql, undefined, connectionDetails);
       
       // Store the execution result in session data
       if (executionResult) {
