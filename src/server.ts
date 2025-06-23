@@ -379,6 +379,15 @@ export class ReportingMCPServer {
           // Initialize BigQueryClient if needed
           if (!this.bigQueryClient) {
             this.bigQueryClient = new BigQueryClient();
+            
+            // Note: In initializeServices, we don't have req/session yet, so we use config values
+            // This is the initial configuration that will be overridden when session details are available
+            console.log('SESSION2: Initial configuration in initializeServices (no session yet):', {
+              projectId: this.config.projectId,
+              datasetId: this.config.datasetId,
+              tableId: this.config.tableId
+            });
+            
             this.bigQueryClient.configure({
               projectId: this.config.projectId,
               datasetId: this.config.datasetId,
@@ -422,6 +431,15 @@ export class ReportingMCPServer {
 
       // Initialize legacy services
       this.bigQueryClient = new BigQueryClient();
+      
+      // Note: In initializeServices, we don't have req/session yet, so we use config values
+      // This is the initial configuration that will be overridden when session details are available
+      console.log('SESSION3: Initial configuration in legacy services (no session yet):', {
+        projectId: this.config.projectId,
+        datasetId: this.config.datasetId,
+        tableId: this.config.tableId
+      });
+      
       this.bigQueryClient.configure({
         projectId: this.config.projectId,
         datasetId: this.config.datasetId,
@@ -1295,10 +1313,25 @@ export class ReportingMCPServer {
         // Initialize reportRegistry if it's not already initialized
         if (!this.bigQueryClient) {
           this.bigQueryClient = new BigQueryClient();
+          
+          // Check for session connection details first, fall back to env variables
+          const projectId = req?.session?.connectionDetails?.projectId || this.config.projectId || '';
+          const datasetId = req?.session?.connectionDetails?.datasetId || this.config.datasetId || '';
+          const tableId = req?.session?.connectionDetails?.tableId || this.config.tableId || '';
+          
+          // Debug logging
+          console.log('SESSION1: Connection details in runReportById:', {
+            fromSession: !!req?.session?.connectionDetails,
+            projectId,
+            datasetId,
+            tableId,
+            sessionDetails: req?.session?.connectionDetails || 'Not available'
+          });
+          
           this.bigQueryClient.configure({
-            projectId: this.config.projectId || '',
-            datasetId: this.config.datasetId || '',
-            tableId: this.config.tableId || ''
+            projectId,
+            datasetId,
+            tableId
           });
         }
         this.reportRegistry = new ReportRegistry(this.bigQueryClient);
@@ -1513,10 +1546,25 @@ export class ReportingMCPServer {
       if (!this.reportRegistry) {
         if (!this.bigQueryClient) {
           this.bigQueryClient = new BigQueryClient();
+          
+          // Check for session connection details first, fall back to env variables
+          const projectId = req?.session?.connectionDetails?.projectId || this.config.projectId || '';
+          const datasetId = req?.session?.connectionDetails?.datasetId || this.config.datasetId || '';
+          const tableId = req?.session?.connectionDetails?.tableId || this.config.tableId || '';
+          
+          // Debug logging
+          console.log('SESSION1B: Connection details in matchReportCommand:', {
+            fromSession: !!req?.session?.connectionDetails,
+            projectId,
+            datasetId,
+            tableId,
+            sessionDetails: req?.session?.connectionDetails || 'Not available'
+          });
+          
           this.bigQueryClient.configure({
-            projectId: this.config.projectId || '',
-            datasetId: this.config.datasetId || '',
-            tableId: this.config.tableId || ''
+            projectId,
+            datasetId,
+            tableId
           });
         }
         this.reportRegistry = new ReportRegistry(this.bigQueryClient);
