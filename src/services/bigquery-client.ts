@@ -618,12 +618,18 @@ export class BigQueryClient {
       throw new Error('BigQuery not configured');
     }
     
-    // Log which connection details are being used
+    // Determine if we're using session details or environment variables
+    // We can check if the current config matches any of the known environment variables
+    const usingEnvVars = 
+      this.config.projectId === process.env.GOOGLE_CLOUD_PROJECT_ID &&
+      this.config.datasetId === process.env.BIGQUERY_DATASET_ID &&
+      this.config.tableId === process.env.BIGQUERY_TABLE_ID;
+      
     console.log('[BigQueryClient] buildFromClause using connection details:', {
       projectId: this.config.projectId,
       datasetId: this.config.datasetId,
       tableId: this.config.tableId,
-      source: 'current configuration'
+      source: usingEnvVars ? 'environment variables' : 'session connection details'
     });
     
     return `FROM \`${this.config.projectId}.${this.config.datasetId}.${this.config.tableId}\``;
