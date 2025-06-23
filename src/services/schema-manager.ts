@@ -8,6 +8,7 @@
 
 import { BigQuery, Dataset, Table } from '@google-cloud/bigquery';
 import { logFlow } from '../utils/logging.js';
+import { ConnectionManager } from './connection-manager.js';
 
 // Types
 export interface SchemaConfig {
@@ -166,8 +167,9 @@ export class SchemaManager {
   /**
    * Configure the SchemaManager with BigQuery connection details
    * @param config Configuration object with BigQuery project, dataset, and table IDs
+   * @param sessionDetails Optional session details for multi-tenant support
    */
-  public async configure(config: SchemaConfig): Promise<void> {
+  public async configure(config: SchemaConfig, sessionDetails?: any): Promise<void> {
     this.config = config;
     
     // Set custom refresh interval if provided
@@ -175,20 +177,40 @@ export class SchemaManager {
       this.refreshIntervalMs = config.refreshIntervalMs;
     }
     
-    // Initialize BigQuery client
-    this.bigquery = new BigQuery({
-      projectId: config.projectId
-    });
+    // Get connection details from ConnectionManager if available
+    const connectionManager = ConnectionManager.getInstance();
+    const projectId = connectionManager.getProjectId(sessionDetails) || config.projectId;
+    const datasetId = connectionManager.getDatasetId(sessionDetails) || config.datasetId;
+    const tableId = connectionManager.getTableId(sessionDetails) || config.tableId;
+    const privateKey = connectionManager.getPrivateKey(sessionDetails);
     
-    this.dataset = this.bigquery.dataset(config.datasetId);
-    this.table = this.dataset.table(config.tableId);
+    // Initialize BigQuery client with appropriate auth
+    const clientOptions: any = { projectId };
+    
+    // If private key is available, use it for authentication
+    if (privateKey) {
+      try {
+        const credentials = JSON.parse(privateKey);
+        clientOptions.credentials = credentials;
+        logFlow('SCHEMA_MANAGER', 'INFO', 'Using private key authentication for BigQuery');
+      } catch (error) {
+        logFlow('SCHEMA_MANAGER', 'ERROR', 'Failed to parse private key JSON', { error });
+      }
+    }
+    
+    this.bigquery = new BigQuery(clientOptions);
+    this.dataset = this.bigquery.dataset(datasetId);
+    this.table = this.dataset.table(tableId);
     
     logFlow('SCHEMA_MANAGER', 'INFO', 'Configured SchemaManager', {
-      project: config.projectId,
-      dataset: config.datasetId,
-      table: config.tableId,
-      refreshInterval: this.refreshIntervalMs
+      project: projectId,
+      dataset: datasetId,
+      table: tableId,
+      refreshInterval: this.refreshIntervalMs,
+      usingPrivateKey: !!privateKey,
+      source: sessionDetails ? 'session' : 'environment'
     });
+
     
     // Initial schema fetch
     await this.refreshSchema();

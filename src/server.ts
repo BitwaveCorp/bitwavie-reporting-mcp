@@ -16,6 +16,7 @@ import { ValidateConnectionRequest, ValidateConnectionResponse } from './types/s
 // Import service modules 
 import { SchemaManager } from './services/schema-manager.js';
 import { LLMQueryTranslator } from './services/llm-query-translator.js';
+import { ConnectionManager } from './services/connection-manager.js';
 // Import the TranslationResult interface directly to ensure we have the latest version
 import type { TranslationResult } from './services/llm-query-translator.js';
 import { QueryConfirmationFormatter } from './services/query-confirmation-formatter.js';
@@ -430,16 +431,25 @@ export class ReportingMCPServer {
     try {
       // Initialize SchemaManager
       this.schemaManager = new SchemaManager();
+      
+      // Get connection details from ConnectionManager
+      const connectionManager = ConnectionManager.getInstance();
+      const projectId = connectionManager.getProjectId() || this.config.projectId;
+      const datasetId = connectionManager.getDatasetId() || this.config.datasetId;
+      const tableId = connectionManager.getTableId() || this.config.tableId;
+      
       logFlow('WALKTHROUGH_SHOWTABLE1', 'INFO', 'Initializing SchemaManager: SHOW TABLE', {
-        projectId: this.config.projectId,
-        datasetId: this.config.datasetId,
-        tableId: this.config.tableId,
-        refreshInterval: this.config.schemaRefreshIntervalMs
+        projectId,
+        datasetId,
+        tableId,
+        refreshInterval: this.config.schemaRefreshIntervalMs,
+        source: 'environment' // At initialization time, we only have environment variables
       });
+      
       await this.schemaManager.configure({
-        projectId: this.config.projectId,
-        datasetId: this.config.datasetId,
-        tableId: this.config.tableId,
+        projectId,
+        datasetId,
+        tableId,
         refreshIntervalMs: this.config.schemaRefreshIntervalMs || 3600000 // Ensure it's always a number
       });
 
@@ -1179,11 +1189,23 @@ export class ReportingMCPServer {
   }
 
   public async handleAnalyzeData(request: AnalyzeDataRequest, req?: express.Request): Promise<AnalyzeDataResponse> {
-    logFlow('WALKTHROUGH_SHOWTABLE2', 'INFO', 'handleAnalyzeData: SHOW TABLE', {
+    // Get connection details from session if available, otherwise fall back to config
+    const connectionDetails = req?.session?.connectionDetails ? {
+      projectId: req.session.connectionDetails.projectId,
+      datasetId: req.session.connectionDetails.datasetId,
+      tableId: req.session.connectionDetails.tableId,
+      hasPrivateKey: !!(req.session as any).privateKey
+    } : {
       projectId: this.config.projectId,
       datasetId: this.config.datasetId,
       tableId: this.config.tableId,
-      refreshInterval: this.config.schemaRefreshIntervalMs
+      hasPrivateKey: false
+    };
+    
+    logFlow('WALKTHROUGH_SHOWTABLE2', 'INFO', 'handleAnalyzeData: SHOW TABLE', {
+      ...connectionDetails,
+      refreshInterval: this.config.schemaRefreshIntervalMs,
+      source: req?.session?.connectionDetails ? 'session' : 'environment'
     });
     try {
       // Validate input
@@ -2022,10 +2044,42 @@ export class ReportingMCPServer {
 
   private async processEnhancedNLQ(sessionId: string, query: string, req?: express.Request): Promise<AnalyzeDataResponse> {
     console.log(`[processEnhancedNLQ] Processing enhanced NLQ for session ${sessionId}, query: ${query}`);
-    logFlow('WALKTHROUGH_SHOWTABLE3', 'INFO', 'processEnhancedNLQ: SHOW TABLE', {
+    
+    // Extract connection details from session or request if available
+    let connectionDetails: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string } | undefined;
+    
+    // First check if connection details are in the request parameter (from simple-http-server)
+    if (req?.body?.connectionDetails) {
+      connectionDetails = req.body.connectionDetails;
+    } 
+    // Then check if connection details are in the session (from express session)
+    else if (req?.session?.connectionDetails) {
+      connectionDetails = {
+        projectId: req.session.connectionDetails.projectId || '',
+        datasetId: req.session.connectionDetails.datasetId || '',
+        tableId: req.session.connectionDetails.tableId || '',
+        privateKey: (req.session as any).privateKey || ''
+      };
+      (connectionDetails as any).session = req.session;
+    }
+    
+    // For logging purposes, create a safe object with connection details
+    const loggingDetails = connectionDetails ? {
+      projectId: connectionDetails.projectId || this.config.projectId,
+      datasetId: connectionDetails.datasetId || this.config.datasetId,
+      tableId: connectionDetails.tableId || this.config.tableId,
+      hasPrivateKey: !!connectionDetails.privateKey,
+      source: req?.body?.connectionDetails ? 'request.body' : (req?.session?.connectionDetails ? 'session' : 'environment')
+    } : {
       projectId: this.config.projectId,
       datasetId: this.config.datasetId,
       tableId: this.config.tableId,
+      hasPrivateKey: false,
+      source: 'environment'
+    };
+    
+    logFlow('WALKTHROUGH_SHOWTABLE3', 'INFO', 'processEnhancedNLQ: SHOW TABLE', {
+      ...loggingDetails,
       refreshInterval: this.config.schemaRefreshIntervalMs
     });
     
@@ -2040,24 +2094,49 @@ export class ReportingMCPServer {
         throw new Error('LLMQueryTranslator not initialized');
       }
       
-      // Extract connection details from request if available
-      let connectionDetails: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string } | undefined;
-      
-      // First check if connection details are in the request parameter (from simple-http-server)
-      if (req?.body?.connectionDetails) {
-        connectionDetails = req.body.connectionDetails;
-        console.log('[processEnhancedNLQ] Using connection details from request.body:', {
+      // Log detailed connection details for debugging
+      logFlow('SERVER', 'INFO', 'Connection details being passed to translator', { 
+        connectionDetails: {
           projectId: connectionDetails?.projectId || 'Not provided',
           datasetId: connectionDetails?.datasetId || 'Not provided',
           tableId: connectionDetails?.tableId || 'Not provided',
           hasPrivateKey: !!connectionDetails?.privateKey,
+          hasSessionRef: !!(connectionDetails as any)?.session,
+          source: req?.body?.connectionDetails ? 'request.body' : (req?.session?.connectionDetails ? 'session' : 'environment')
+        }
+      });
+      
+      // Log the full session state for debugging if we have a session
+      if (req?.session) {
+        logFlow('SERVER', 'INFO', 'Session state in processEnhancedNLQ', {
+          sessionId,
+          hasSession: !!req.session,
+          hasConnectionDetails: !!req.session?.connectionDetails,
+          sessionKeys: req.session ? Object.keys(req.session) : [],
+          connectionDetailsKeys: req.session?.connectionDetails ? Object.keys(req.session.connectionDetails) : [],
+          hasPrivateKey: !!(req.session as any).privateKey,
+          privateKeyType: typeof (req.session as any).privateKey
+        });
+      }
+      
+      // Extract connection details from request if available
+      let enhancedConnectionDetails: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string } | undefined;
+      
+      // First check if connection details are in the request parameter (from simple-http-server)
+      if (req?.body?.connectionDetails) {
+        enhancedConnectionDetails = req.body.connectionDetails;
+        console.log('[processEnhancedNLQ] Using connection details from request.body:', {
+          projectId: enhancedConnectionDetails?.projectId || 'Not provided',
+          datasetId: enhancedConnectionDetails?.datasetId || 'Not provided',
+          tableId: enhancedConnectionDetails?.tableId || 'Not provided',
+          hasPrivateKey: !!enhancedConnectionDetails?.privateKey,
           source: 'request.body'
         });
       } 
       // Then check if connection details are in the session (from express session)
       else if (req?.session?.connectionDetails) {
         // Initialize with empty object to ensure it's not undefined
-        connectionDetails = {
+        enhancedConnectionDetails = {
           projectId: req.session.connectionDetails.projectId || '',
           datasetId: req.session.connectionDetails.datasetId || '',
           tableId: req.session.connectionDetails.tableId || '',
@@ -2067,12 +2146,12 @@ export class ReportingMCPServer {
         
         // Add session object reference to help ConnectionManager find privateKey
         // This allows ConnectionManager to check both connectionDetails.privateKey and session.privateKey
-        (connectionDetails as any).session = req.session;
+        (enhancedConnectionDetails as any).session = req.session;
         
         console.log('[processEnhancedNLQ] Using connection details from session:', {
-          projectId: connectionDetails.projectId || 'Not provided',
-          datasetId: connectionDetails.datasetId || 'Not provided',
-          tableId: connectionDetails.tableId || 'Not provided',
+          projectId: enhancedConnectionDetails.projectId || 'Not provided',
+          datasetId: enhancedConnectionDetails.datasetId || 'Not provided',
+          tableId: enhancedConnectionDetails.tableId || 'Not provided',
           hasPrivateKey: !!(req.session as any).privateKey,
           source: 'session'
         });
@@ -2088,16 +2167,16 @@ export class ReportingMCPServer {
       
       // Log connection details before passing to translator
       logFlow('SERVER', 'INFO', 'Connection details being passed to translator', {
-        hasConnectionDetails: !!connectionDetails,
-        projectId: connectionDetails?.projectId || 'Not provided',
-        datasetId: connectionDetails?.datasetId || 'Not provided',
-        tableId: connectionDetails?.tableId || 'Not provided',
-        hasPrivateKey: !!connectionDetails?.privateKey,
-        source: connectionDetails ? 'session' : 'environment'
+        hasConnectionDetails: !!enhancedConnectionDetails,
+        projectId: enhancedConnectionDetails?.projectId || 'Not provided',
+        datasetId: enhancedConnectionDetails?.datasetId || 'Not provided',
+        tableId: enhancedConnectionDetails?.tableId || 'Not provided',
+        hasPrivateKey: !!enhancedConnectionDetails?.privateKey,
+        source: enhancedConnectionDetails ? (req?.body?.connectionDetails ? 'request.body' : 'session') : 'environment'
       });
       
       // Step 1: Translate the query to SQL
-      const translationResult = await this.llmQueryTranslator.translateQuery(query, undefined, connectionDetails);
+      const translationResult = await this.llmQueryTranslator.translateQuery(query, undefined, enhancedConnectionDetails);
       logFlow('SERVER', 'INFO', 'Translation result', { translationResult });
 
       // Step 2: Check if this is a report query
