@@ -5,7 +5,7 @@
  * supporting both environment variables and session-based connection details.
  */
 
-import { logFlow } from "../utils/logging";
+import { logFlow } from "../utils/logging.js";
 
 export class ConnectionManager {
   private static instance: ConnectionManager;
