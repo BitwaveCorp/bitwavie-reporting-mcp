@@ -640,12 +640,27 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     const connectionManager = ConnectionManager.getInstance();
     const columnName = this.schemaManager.getSchema()?.columns[0]?.name;
     
+    // Ensure connectionDetails is properly initialized if provided
+    if (connectionDetails) {
+      // Make sure none of the properties are undefined
+      connectionDetails = {
+        projectId: connectionDetails.projectId || '',
+        datasetId: connectionDetails.datasetId || '',
+        tableId: connectionDetails.tableId || '',
+        privateKey: connectionDetails.privateKey || ''
+      };
+    }
+    
     // Log connection details (safely - without private key)
-    connectionManager.logConnectionDetails(connectionDetails);
+    const safeDetails = connectionManager.logConnectionDetails(connectionDetails);
     
     // Get fully qualified table ID from ConnectionManager
     logFlow('WALKTHROUGH_SHOWTABLE4', 'INFO', 'Show connection details', {
-      connectionDetails
+      connectionDetails: safeDetails,
+      hasProjectId: !!connectionDetails?.projectId,
+      hasDatasetId: !!connectionDetails?.datasetId,
+      hasTableId: !!connectionDetails?.tableId,
+      source: connectionDetails && (connectionDetails.projectId || connectionDetails.datasetId || connectionDetails.tableId) ? 'session' : 'environment'
     });
 
     const tableId = columnName 

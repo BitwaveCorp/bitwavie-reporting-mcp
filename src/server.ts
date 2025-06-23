@@ -2056,12 +2056,13 @@ export class ReportingMCPServer {
       } 
       // Then check if connection details are in the session (from express session)
       else if (req?.session?.connectionDetails) {
+        // Initialize with empty object to ensure it's not undefined
         connectionDetails = {
-          projectId: req.session.connectionDetails.projectId,
-          datasetId: req.session.connectionDetails.datasetId,
-          tableId: req.session.connectionDetails.tableId,
+          projectId: req.session.connectionDetails.projectId || '',
+          datasetId: req.session.connectionDetails.datasetId || '',
+          tableId: req.session.connectionDetails.tableId || '',
           // Get privateKey from session if it exists
-          privateKey: (req.session as any).privateKey
+          privateKey: (req.session as any).privateKey || ''
         };
         
         console.log('[processEnhancedNLQ] Using connection details from session:', {
@@ -2072,6 +2073,16 @@ export class ReportingMCPServer {
           source: 'session'
         });
       }
+      
+      // Log connection details before passing to translator
+      logFlow('SERVER', 'INFO', 'Connection details being passed to translator', {
+        hasConnectionDetails: !!connectionDetails,
+        projectId: connectionDetails?.projectId || 'Not provided',
+        datasetId: connectionDetails?.datasetId || 'Not provided',
+        tableId: connectionDetails?.tableId || 'Not provided',
+        hasPrivateKey: !!connectionDetails?.privateKey,
+        source: connectionDetails ? 'session' : 'environment'
+      });
       
       // Step 1: Translate the query to SQL
       const translationResult = await this.llmQueryTranslator.translateQuery(query, undefined, connectionDetails);
