@@ -32,6 +32,14 @@ export { router as connectionRouter };
 const validateTableAccess: RequestHandler = async (req, res) => {
   try {
     const request = req.body as ValidateConnectionRequest;
+    
+    logFlow('CONNECTION-ROUTES', 'INFO', 'Validating table access with request', {
+      hasProjectId: !!request.projectId,
+      hasDatasetId: !!request.datasetId,
+      hasTableId: !!request.tableId,
+      hasPrivateKey: !!request.privateKey
+    });
+    
     const response = await validateConnection(request);
 
     if (response.success) {
@@ -42,6 +50,23 @@ const validateTableAccess: RequestHandler = async (req, res) => {
         datasetId: request.datasetId,
         tableId: request.tableId
       };
+      
+      // Log that we've saved connection details to the session
+      logFlow('CONNECTION-ROUTES', 'INFO', 'Connection details saved to session', {
+        projectId: request.projectId,
+        datasetId: request.datasetId,
+        tableId: request.tableId,
+        sessionId: req.sessionID
+      });
+      
+      // Store private key separately in session
+      if (request.privateKey) {
+        (req.session as any).privateKey = request.privateKey;
+        logFlow('CONNECTION-ROUTES', 'INFO', 'Private key saved to session', {
+          hasPrivateKey: true,
+          sessionId: req.sessionID
+        });
+      }
     }
 
     res.json(response);
@@ -202,12 +227,29 @@ const removeTableMapping: RequestHandler = async (req, res) => {
 // Check connection status
 const checkConnectionStatus: RequestHandler = (req, res) => {
   try {
+    // Log the session ID and whether connection details exist
+    logFlow('CONNECTION-ROUTES', 'INFO', 'Checking connection status', {
+      sessionId: req.sessionID,
+      hasSession: !!req.session,
+      hasConnectionDetails: !!req.session?.connectionDetails,
+      hasPrivateKey: !!(req.session as any)?.privateKey
+    });
+    
     const isConnected = req.session.connectionDetails?.isConnected === true;
     const connectionDetails = isConnected ? {
       projectId: req.session.connectionDetails?.projectId,
       datasetId: req.session.connectionDetails?.datasetId,
       tableId: req.session.connectionDetails?.tableId
     } : null;
+    
+    // Log the connection details being returned
+    logFlow('CONNECTION-ROUTES', 'INFO', 'Connection status result', {
+      isConnected,
+      hasConnectionDetails: !!connectionDetails,
+      projectId: connectionDetails?.projectId || 'Not provided',
+      datasetId: connectionDetails?.datasetId || 'Not provided',
+      tableId: connectionDetails?.tableId || 'Not provided'
+    });
     
     res.json({
       success: true,
@@ -227,8 +269,21 @@ const checkConnectionStatus: RequestHandler = (req, res) => {
 // Clear connection
 const clearConnection: RequestHandler = (req, res) => {
   try {
+    // Log the session details before clearing
+    logFlow('CONNECTION-ROUTES', 'INFO', 'Clearing connection from session', {
+      sessionId: req.sessionID,
+      hasConnectionDetails: !!req.session?.connectionDetails,
+      hasPrivateKey: !!(req.session as any)?.privateKey
+    });
+    
     // Remove connection details from session
     delete req.session.connectionDetails;
+    
+    // Also remove private key if it exists
+    if ((req.session as any).privateKey) {
+      delete (req.session as any).privateKey;
+      logFlow('CONNECTION-ROUTES', 'INFO', 'Private key removed from session');
+    }
     
     res.json({
       success: true,
