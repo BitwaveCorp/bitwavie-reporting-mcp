@@ -33,6 +33,31 @@ const validateTableAccess: RequestHandler = async (req, res) => {
   try {
     const request = req.body as ValidateConnectionRequest;
     
+    // Check if this is a clear connection request
+    if (request.action === 'clear') {
+      // Log the session details before clearing
+      logFlow('CONNECTION-ROUTES', 'INFO', 'Clearing connection from session via action parameter', {
+        sessionId: req.sessionID,
+        hasConnectionDetails: !!req.session?.connectionDetails,
+        hasPrivateKey: !!(req.session as any)?.privateKey
+      });
+      
+      // Remove connection details from session
+      delete req.session.connectionDetails;
+      
+      // Also remove private key if it exists
+      if ((req.session as any).privateKey) {
+        delete (req.session as any).privateKey;
+        logFlow('CONNECTION-ROUTES', 'INFO', 'Private key removed from session');
+      }
+      
+      res.json({
+        success: true,
+        message: 'Connection cleared successfully'
+      });
+      return;
+    }
+    
     logFlow('CONNECTION-ROUTES', 'INFO', 'Validating table access with request', {
       hasProjectId: !!request.projectId,
       hasDatasetId: !!request.datasetId,
