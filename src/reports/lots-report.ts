@@ -664,19 +664,25 @@ export class LotsReportGenerator {
       // Generate summary statistics
       const summary = this.generateSummary(results);
       
-      // Define columns based on the results
+      // Define columns based on the SQL query results
       const columns = [
         'lotId',
+        'txnId',
         'asset',
-        'inventory',
-        'acquisitionDate',
+        'assetId',
+        'timestampSEC',
+        'unitsAcquired',
+        'unitsDisposed',
         'qty',
+        'costBasisAcquired',
+        'costBasisRelieved',
+        'impairmentExpense',
+        'impairmentReversal',
+        'revaluationAdjustmentUpward',
+        'revaluationAdjustmentDownward',
         'costBasis',
         'carryingValue',
-        'adjustedToValue',
-        'impairmentExpense',
-        'daysHeld',
-        'isLongTerm'
+        'adjustedToValue'
       ];
       
       const executionTime = Date.now() - startTime;

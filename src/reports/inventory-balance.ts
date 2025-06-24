@@ -1056,18 +1056,27 @@ export class InventoryBalanceGenerator {
       // Generate summary statistics
       const summary = this.generateSummary(results);
       
-      // Define columns based on the results
+      // Define columns based on the SQL query results
       const columns = [
         'asset',
+        'assetId',
         'inventory',
         'qty',
+        'costBasisAcquired',
+        'costBasisRelieved',
+        'impairmentExpense',
+        'impairmentExpenseReversal',
+        'fairValueAdjustmentUpward',
+        'fairValueAdjustmentDownward',
+        'revaluationAdjustmentUpward',
+        'revaluationAdjustmentDownward',
+        'impairmentExpenseDisposed',
         'costBasis',
-        'carryingValue',
-        'impairmentExpense'
+        'carryingValue'
       ];
       
       if (groupBy.includes('subsidiary')) {
-        columns.splice(2, 0, 'subsidiaryId');
+        columns.splice(3, 0, 'subsidiaryId');
       }
       
       const executionTime = Date.now() - startTime;
