@@ -18,6 +18,7 @@
 
 import { BigQueryClient } from '../services/bigquery-client.js';
 import { QueryExecutor } from '../services/query-executor.js';
+import { ConnectionManager } from '../services/connection-manager.js';
 import { 
   ValuationRollforwardRecord, 
   ReportParameters, 
@@ -27,6 +28,7 @@ import {
 export class ValuationRollforwardGenerator {
   private bigQueryClient: BigQueryClient;
   private queryExecutor: QueryExecutor;
+  private connectionManager: ConnectionManager;
 
   // Field metadata for natural language query mapping
   private static readonly FIELD_METADATA: FieldMetadata[] = [
@@ -155,8 +157,11 @@ export class ValuationRollforwardGenerator {
   constructor(bigQueryClient: BigQueryClient) {
     this.bigQueryClient = bigQueryClient;
     
-    // Use project ID from environment variable, with fallback to hardcoded value
-    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
+    // Initialize ConnectionManager to get connection details from session
+    this.connectionManager = ConnectionManager.getInstance();
+    
+    // Get project ID from ConnectionManager (which will use session or environment variables)
+    const projectId = this.connectionManager.getProjectId();
     console.log(`ValuationRollforwardGenerator: Initializing QueryExecutor with project ID: ${projectId}`);
     this.queryExecutor = new QueryExecutor(projectId);
   }
@@ -224,13 +229,14 @@ export class ValuationRollforwardGenerator {
     const groupByColumns = this.buildGroupByColumns(groupBy);
     const whereConditions = this.buildWhereConditions(parameters, filters);
     
-    // Get table reference from environment variables with fallbacks
-    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
-    const datasetId = process.env.BIGQUERY_DATASET_ID || '0_Bitwavie_MCP';
-    const tableId = process.env.BIGQUERY_TABLE_ID || '2622d4df5b2a15ec811e_gl_actions';
-    const fullTablePath = `${projectId}.${datasetId}.${tableId}`;
+    // Get table reference from ConnectionManager (which will use session or environment variables)
+    const projectId = this.connectionManager.getProjectId();
+    const datasetId = this.connectionManager.getDatasetId();
+    const tableId = this.connectionManager.getTableId();
+    const fullTablePath = this.connectionManager.getFullyQualifiedTableId();
     
-    console.log(`ValuationRollforwardGenerator: Using table: ${fullTablePath}`);
+    console.log(`ValuationRollforwardGenerator: Using table: ${fullTablePath} (Project: ${projectId}, Dataset: ${datasetId}, Table: ${tableId})`);
+    console.log(`ValuationRollforwardGenerator: Connection details source: ${this.connectionManager.logConnectionDetails()}`);
 
     // Check if runId is provided in parameters
     const runIdFilter = parameters.runId ? 'runId = @runId' : '1=1'; // Use 1=1 as a no-op filter if runId not provided
