@@ -202,7 +202,8 @@ export class LotsReportGenerator {
     const projectId = this.connectionManager.getProjectId() || process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
     const datasetId = this.connectionManager.getDatasetId() || process.env.BIGQUERY_DATASET_ID || '0_Bitwavie_MCP';
     const tableId = this.connectionManager.getTableId() || process.env.BIGQUERY_TABLE_ID || '2622d4df5b2a15ec811e_gl_actions';
-    const fullTablePath = `${projectId}.${datasetId}.${tableId}`;
+    // Use string concatenation for the table path to avoid backtick confusion in SQL
+    const fullTablePath = projectId + '.' + datasetId + '.' + tableId;
     
     console.log(`LotsReportGenerator: Using table: ${fullTablePath} (Project: ${projectId}, Dataset: ${datasetId}, Table: ${tableId})`);
     console.log(`LotsReportGenerator: Connection details source: ${this.connectionManager.logConnectionDetails()}`);
