@@ -93,6 +93,72 @@ app.get('/', (req, res) => {
   res.status(200).send('MCP HTTP Server is running');
 });
 
+// Session details endpoint
+app.post('/mcp/session-details', async (req, res) => {
+  console.log('[SIMPLE-HTTP] Session details request received');
+  
+  try {
+    // Get connection details from session storage
+    const connectionDetails = sessionStorage.connectionDetails;
+    
+    // Prepare response
+    const sessionDetails = {
+      isConnected: sessionStorage.isConnected,
+      timestamp: new Date().toISOString(),
+      connectionDetails: null
+    };
+    
+    // Add connection details if available (safely without private key)
+    if (connectionDetails) {
+      sessionDetails.connectionDetails = {
+        projectId: connectionDetails.projectId || '',
+        datasetId: connectionDetails.datasetId || '',
+        tableId: connectionDetails.tableId || '',
+        hasPrivateKey: !!connectionDetails.privateKey
+      };
+      
+      // Get fully qualified table ID using ConnectionManager
+      try {
+        if (mcpServer) {
+          const connectionManager = mcpServer.getConnectionManager();
+          if (connectionManager) {
+            // Log connection details safely
+            const safeDetails = connectionManager.logConnectionDetails(connectionDetails);
+            console.log('[SIMPLE-HTTP] Connection details:', JSON.stringify(safeDetails));
+            
+            // Get fully qualified table ID
+            const fullyQualifiedTableId = connectionManager.getFullyQualifiedTableId(connectionDetails);
+            sessionDetails.fullyQualifiedTableId = fullyQualifiedTableId;
+            
+            // Determine if connection details are from session or environment
+            sessionDetails.connectionSource = connectionDetails && 
+              (connectionDetails.projectId || connectionDetails.datasetId || connectionDetails.tableId) ? 
+              'session' : 'environment';
+          } else {
+            sessionDetails.error = 'ConnectionManager not available';
+          }
+        } else {
+          sessionDetails.error = 'MCP Server not available';
+        }
+      } catch (error) {
+        console.error('[SIMPLE-HTTP] Error getting fully qualified table ID:', error);
+        sessionDetails.error = `Error getting fully qualified table ID: ${error.message}`;
+      }
+    } else {
+      sessionDetails.error = 'No connection details available';
+    }
+    
+    console.log('[SIMPLE-HTTP] Returning session details:', JSON.stringify(sessionDetails));
+    return res.json(sessionDetails);
+  } catch (error) {
+    console.error('[SIMPLE-HTTP] Error processing session details request:', error);
+    return res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
+    });
+  }
+});
+
 // JSON-RPC endpoint with MCP server integration
 app.post('/rpc', async (req, res) => {
   console.log('[SIMPLE-HTTP] RPC request received:', JSON.stringify(req.body));
