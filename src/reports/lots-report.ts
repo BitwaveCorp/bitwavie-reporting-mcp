@@ -114,8 +114,8 @@ export class LotsReportGenerator {
     // Initialize ConnectionManager to get connection details from session
     this.connectionManager = ConnectionManager.getInstance();
     
-    // Get project ID from ConnectionManager (which will use session or environment variables)
-    const projectId = this.connectionManager.getProjectId();
+    // Get project ID from ConnectionManager with fallbacks
+    const projectId = this.connectionManager.getProjectId() || process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
     console.log(`LotsReportGenerator: Initializing QueryExecutor with project ID: ${projectId}`);
     this.queryExecutor = new QueryExecutor(projectId);
   }
@@ -198,11 +198,11 @@ export class LotsReportGenerator {
     const whereConditions = this.buildWhereConditions(parameters, filters);
     const havingConditions = this.buildHavingConditions(filters);
     
-    // Get table reference from ConnectionManager (which will use session or environment variables)
-    const projectId = this.connectionManager.getProjectId();
-    const datasetId = this.connectionManager.getDatasetId();
-    const tableId = this.connectionManager.getTableId();
-    const fullTablePath = this.connectionManager.getFullyQualifiedTableId();
+    // Get table reference from ConnectionManager with fallbacks
+    const projectId = this.connectionManager.getProjectId() || process.env.GOOGLE_CLOUD_PROJECT_ID || 'bitwave-solutions';
+    const datasetId = this.connectionManager.getDatasetId() || process.env.BIGQUERY_DATASET_ID || '0_Bitwavie_MCP';
+    const tableId = this.connectionManager.getTableId() || process.env.BIGQUERY_TABLE_ID || '2622d4df5b2a15ec811e_gl_actions';
+    const fullTablePath = `${projectId}.${datasetId}.${tableId}`;
     
     console.log(`LotsReportGenerator: Using table: ${fullTablePath} (Project: ${projectId}, Dataset: ${datasetId}, Table: ${tableId})`);
     console.log(`LotsReportGenerator: Connection details source: ${this.connectionManager.logConnectionDetails()}`);
