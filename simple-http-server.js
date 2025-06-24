@@ -456,6 +456,65 @@ app.post('/rpc', async (req, res) => {
           id
         });
       }
+      
+      case 'connection/session-details': {
+        console.log('[SIMPLE-HTTP] Processing connection/session-details request');
+        
+        // Get connection details from session storage
+        const connectionDetails = sessionStorage.connectionDetails;
+        
+        // Initialize response object
+        const sessionDetails = {
+          isConnected: sessionStorage.isConnected,
+          connectionDetails: connectionDetails ? {
+            projectId: connectionDetails.projectId || '',
+            datasetId: connectionDetails.datasetId || '',
+            tableId: connectionDetails.tableId || '',
+            hasPrivateKey: !!connectionDetails.privateKey
+          } : null,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Use ConnectionManager to get fully qualified table ID if we have connection details
+        if (mcpServer && connectionDetails) {
+          try {
+            // Get ConnectionManager instance from MCP server
+            const connectionManager = mcpServer.getConnectionManager();
+            
+            if (connectionManager) {
+              // Log connection details (safely - without private key)
+              const safeDetails = connectionManager.logConnectionDetails(connectionDetails);
+              
+              // Get fully qualified table ID
+              const fullyQualifiedTableId = connectionManager.getFullyQualifiedTableId(connectionDetails);
+              
+              // Add to response
+              sessionDetails.fullyQualifiedTableId = fullyQualifiedTableId;
+              sessionDetails.connectionSource = connectionDetails && 
+                (connectionDetails.projectId || connectionDetails.datasetId || connectionDetails.tableId) ? 
+                'session' : 'environment';
+              
+              console.log('[SIMPLE-HTTP] Got fully qualified table ID:', fullyQualifiedTableId);
+            } else {
+              console.log('[SIMPLE-HTTP] ConnectionManager not available');
+              sessionDetails.error = 'ConnectionManager not available';
+            }
+          } catch (error) {
+            console.error('[SIMPLE-HTTP] Error getting fully qualified table ID:', error);
+            sessionDetails.error = `Error getting fully qualified table ID: ${error.message}`;
+          }
+        } else if (!connectionDetails) {
+          sessionDetails.error = 'No connection details available';
+        }
+        
+        console.log('[SIMPLE-HTTP] Returning session details:', JSON.stringify(sessionDetails));
+        
+        return res.json({
+          jsonrpc: '2.0',
+          result: sessionDetails,
+          id
+        });
+      }
         
       default: {
         // Simple response for other methods
