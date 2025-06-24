@@ -7,10 +7,39 @@
 
 import { logFlow } from "../utils/logging.js";
 
+// Define the global function type
+declare global {
+  var getSessionConnectionDetails: () => any;
+}
+
 export class ConnectionManager {
   private static instance: ConnectionManager;
   
   private constructor() {}
+  
+  /**
+   * Get connection details from session storage
+   * @returns Connection details from session storage or null if not available
+   */
+  public getSessionConnectionDetails(): any {
+    try {
+      // Use the global function to get session connection details
+      if (global.getSessionConnectionDetails) {
+        const sessionDetails = global.getSessionConnectionDetails();
+        logFlow('CONNECTION_MANAGER', 'INFO', 'Retrieved session connection details', {
+          hasSessionDetails: !!sessionDetails,
+          projectId: sessionDetails?.projectId ? 'present' : 'not present',
+          datasetId: sessionDetails?.datasetId ? 'present' : 'not present',
+          tableId: sessionDetails?.tableId ? 'present' : 'not present',
+          hasPrivateKey: !!sessionDetails?.privateKey
+        });
+        return sessionDetails;
+      }
+    } catch (error) {
+      logFlow('CONNECTION_MANAGER', 'ERROR', 'Error getting session connection details', error);
+    }
+    return null;
+  }
   
   /**
    * Get the singleton instance of ConnectionManager
@@ -28,11 +57,14 @@ export class ConnectionManager {
    * @returns Project ID string
    */
   public getProjectId(sessionDetails?: any): string {
+    // Try to get session details if not provided
+    const details = sessionDetails || this.getSessionConnectionDetails();
+    
     logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getProjectId', {
-      projectId: sessionDetails?.projectId,
-      source: sessionDetails ? 'session' : 'environment'
+      projectId: details?.projectId,
+      source: details ? 'session' : 'environment'
     });
-    return sessionDetails?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID || '';
+    return details?.projectId || process.env.GOOGLE_CLOUD_PROJECT_ID || '';
   }
   
   /**
@@ -41,11 +73,14 @@ export class ConnectionManager {
    * @returns Dataset ID string
    */
   public getDatasetId(sessionDetails?: any): string {
+    // Try to get session details if not provided
+    const details = sessionDetails || this.getSessionConnectionDetails();
+    
     logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getDatasetId', {
-      datasetId: sessionDetails?.datasetId,
-      source: sessionDetails ? 'session' : 'environment'
+      datasetId: details?.datasetId,
+      source: details ? 'session' : 'environment'
     });
-    return sessionDetails?.datasetId || process.env.BIGQUERY_DATASET_ID || '';
+    return details?.datasetId || process.env.BIGQUERY_DATASET_ID || '';
   }
   
   /**
@@ -54,12 +89,17 @@ export class ConnectionManager {
    * @returns Table ID string
    */
   public getTableId(sessionDetails?: any): string {
+    // Try to get session details if not provided
+    const details = sessionDetails || this.getSessionConnectionDetails();
+    
     logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getTableId', {
-      tableId: sessionDetails?.tableId,
-      source: sessionDetails ? 'session' : 'environment'
-    }); 
-    return sessionDetails?.tableId || process.env.BIGQUERY_TABLE_ID || '';
+      tableId: details?.tableId,
+      source: details ? 'session' : 'environment'
+    });
+    return details?.tableId || process.env.BIGQUERY_TABLE_ID || '';
   }
+  
+
   
   /**
    * Get the private key from session details (no environment fallback for security)
@@ -67,14 +107,17 @@ export class ConnectionManager {
    * @returns Private key string or undefined
    */
   public getPrivateKey(sessionDetails?: any): string | undefined {
-    // First check if privateKey is directly in the sessionDetails object
+    // Try to get session details if not provided
+    const details = sessionDetails || this.getSessionConnectionDetails();
+    
+    // First check if privateKey is directly in the details object
     // Then check if it's in the session object structure (req.session.privateKey)
-    const privateKey = sessionDetails?.privateKey || sessionDetails?.session?.privateKey;
+    const privateKey = details?.privateKey || details?.session?.privateKey;
     
     logFlow('WALKTHROUGH_SHOWTABLE6A', 'INFO', 'getPrivateKey', {
       hasPrivateKey: !!privateKey,
-      privateKeySource: privateKey ? (sessionDetails?.privateKey ? 'sessionDetails.privateKey' : 'session.privateKey') : 'not found',
-      source: sessionDetails ? 'session' : 'environment'
+      privateKeySource: privateKey ? (details?.privateKey ? 'details.privateKey' : 'session.privateKey') : 'not found',
+      source: details ? 'session' : 'environment'
     });
     
     return privateKey;
@@ -86,9 +129,12 @@ export class ConnectionManager {
    * @returns Fully qualified table ID string
    */
   public getFullyQualifiedTableId(sessionDetails?: any): string {
-    const projectId = this.getProjectId(sessionDetails);
-    const datasetId = this.getDatasetId(sessionDetails);
-    const tableId = this.getTableId(sessionDetails);
+    // Try to get session details if not provided
+    const details = sessionDetails || this.getSessionConnectionDetails();
+    
+    const projectId = this.getProjectId(details);
+    const datasetId = this.getDatasetId(details);
+    const tableId = this.getTableId(details);
     return `\`${projectId}.${datasetId}.${tableId}\``;
   }
   
@@ -98,10 +144,13 @@ export class ConnectionManager {
    * @returns Boolean indicating if connection is complete
    */
   public hasCompleteConnectionDetails(sessionDetails?: any): boolean {
+    // Try to get session details if not provided
+    const sessionData = sessionDetails || this.getSessionConnectionDetails();
+    
     return !!(
-      this.getProjectId(sessionDetails) && 
-      this.getDatasetId(sessionDetails) && 
-      this.getTableId(sessionDetails)
+      this.getProjectId(sessionData) && 
+      this.getDatasetId(sessionData) && 
+      this.getTableId(sessionData)
     );
   }
   
@@ -111,20 +160,23 @@ export class ConnectionManager {
    * @returns Object with safe connection details
    */
   public logConnectionDetails(sessionDetails?: any): object {
+    // Try to get session details if not provided
+    const sessionData = sessionDetails || this.getSessionConnectionDetails();
+    
     // Get values from session or environment
-    const projectId = this.getProjectId(sessionDetails);
-    const datasetId = this.getDatasetId(sessionDetails);
-    const tableId = this.getTableId(sessionDetails);
-    const privateKey = this.getPrivateKey(sessionDetails);
+    const projectId = this.getProjectId(sessionData);
+    const datasetId = this.getDatasetId(sessionData);
+    const tableId = this.getTableId(sessionData);
+    const privateKey = this.getPrivateKey(sessionData);
     
     // Determine the source of each value
-    const projectIdSource = sessionDetails?.projectId ? 'session' : 'environment';
-    const datasetIdSource = sessionDetails?.datasetId ? 'session' : 'environment';
-    const tableIdSource = sessionDetails?.tableId ? 'session' : 'environment';
+    const projectIdSource = sessionData?.projectId ? 'session' : 'environment';
+    const datasetIdSource = sessionData?.datasetId ? 'session' : 'environment';
+    const tableIdSource = sessionData?.tableId ? 'session' : 'environment';
     const privateKeySource = privateKey ? 'session' : 'none';
     
     // Create detailed object for logging
-    const details = {
+    const connectionDetails = {
       projectId,
       datasetId,
       tableId,
@@ -141,7 +193,7 @@ export class ConnectionManager {
       sessionHasPrivateKey: !!sessionDetails?.privateKey || !!sessionDetails?.session?.privateKey
     };
     
-    console.log('[ConnectionManager] Current connection details:', details);
-    return details;
+    console.log('[ConnectionManager] Current connection details:', connectionDetails);
+    return connectionDetails;
   }
 }
