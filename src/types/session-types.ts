@@ -19,6 +19,7 @@ export interface ValidateConnectionRequest {
   datasetId: string;
   tableId: string;
   privateKey: string;
+  action?: string; // Optional action parameter for operations like 'clear'
 }
 
 // Response from connection validation

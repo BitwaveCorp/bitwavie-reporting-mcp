@@ -31,6 +31,14 @@ import { ConnectionManager } from './connection-manager.js';
 export async function validateConnection(
   request: ValidateConnectionRequest
 ): Promise<ValidateConnectionResponse> {
+  // Check if this is a clear connection request
+  if (request.action === 'clear') {
+    logFlow('CONNECTION-HANDLER', 'INFO', 'Clearing connection via action parameter');
+    return {
+      success: true,
+      message: 'Connection cleared successfully'
+    };
+  }
   try {
     logFlow('CONNECTION-HANDLER', 'INFO', 'Validating connection', {
       projectId: request.projectId,
