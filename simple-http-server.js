@@ -102,32 +102,56 @@ app.get('/', (req, res) => {
 // REST API endpoints for connection management
 
 // Connection status endpoint
-app.get('/api/connection/status', (req, res) => {
+app.get('/api/connection/status', async (req, res) => {
   console.log('[SIMPLE-HTTP] REST API - Processing connection status request');
   
-  // Use the existing getCurrentConnectionDetails function
-  const connectionDetails = getCurrentConnectionDetails();
-  const isConnected = !!(connectionDetails && connectionDetails.projectId);
+  try {
+    // Import the ConnectionManager dynamically
+    const { ConnectionManager } = await import('./dist/services/connection-manager.js');
+    const connectionManager = ConnectionManager.getInstance();
+    
+    // Use ConnectionManager to get session connection details
+    const connectionDetails = connectionManager.getSessionConnectionDetails();
+    const isConnected = !!(connectionDetails && connectionDetails.projectId);
   
-  console.log(`[SIMPLE-HTTP] REST API - Connection status: ${isConnected ? 'Connected' : 'Not connected'}`);
-  if (isConnected) {
-    console.log('[SIMPLE-HTTP] REST API - Connection details:', {
-      projectId: connectionDetails.projectId,
-      datasetId: connectionDetails.datasetId,
-      tableId: connectionDetails.tableId,
-      hasPrivateKey: !!connectionDetails.privateKey
+    console.log(`[SIMPLE-HTTP] REST API - Connection status: ${isConnected ? 'Connected' : 'Not connected'}`);
+    if (isConnected) {
+      console.log('[SIMPLE-HTTP] REST API - Connection details:', {
+        projectId: connectionDetails.projectId,
+        datasetId: connectionDetails.datasetId,
+        tableId: connectionDetails.tableId,
+        hasPrivateKey: !!connectionDetails.privateKey
+      });
+    }
+    
+    return res.json({
+      success: true,
+      isConnected,
+      connectionDetails: isConnected ? {
+        projectId: connectionDetails.projectId,
+        datasetId: connectionDetails.datasetId,
+        tableId: connectionDetails.tableId
+      } : undefined
+    });
+  } catch (error) {
+    console.error('[SIMPLE-HTTP] Error getting connection details from ConnectionManager:', error);
+    
+    // Fall back to the original getCurrentConnectionDetails function
+    const connectionDetails = getCurrentConnectionDetails();
+    const isConnected = !!(connectionDetails && connectionDetails.projectId);
+    
+    console.log(`[SIMPLE-HTTP] REST API - Fallback connection status: ${isConnected ? 'Connected' : 'Not connected'}`);
+    
+    return res.json({
+      success: true,
+      isConnected,
+      connectionDetails: isConnected ? {
+        projectId: connectionDetails.projectId,
+        datasetId: connectionDetails.datasetId,
+        tableId: connectionDetails.tableId
+      } : undefined
     });
   }
-  
-  return res.json({
-    success: true,
-    isConnected,
-    connectionDetails: isConnected ? {
-      projectId: connectionDetails.projectId,
-      datasetId: connectionDetails.datasetId,
-      tableId: connectionDetails.tableId
-    } : undefined
-  });
 });
 
 // JSON-RPC endpoint with MCP server integration
