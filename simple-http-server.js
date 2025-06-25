@@ -99,6 +99,37 @@ app.get('/', (req, res) => {
 
 
 
+// REST API endpoints for connection management
+
+// Connection status endpoint
+app.get('/api/connection/status', (req, res) => {
+  console.log('[SIMPLE-HTTP] REST API - Processing connection status request');
+  
+  // Use the existing getCurrentConnectionDetails function
+  const connectionDetails = getCurrentConnectionDetails();
+  const isConnected = !!(connectionDetails && connectionDetails.projectId);
+  
+  console.log(`[SIMPLE-HTTP] REST API - Connection status: ${isConnected ? 'Connected' : 'Not connected'}`);
+  if (isConnected) {
+    console.log('[SIMPLE-HTTP] REST API - Connection details:', {
+      projectId: connectionDetails.projectId,
+      datasetId: connectionDetails.datasetId,
+      tableId: connectionDetails.tableId,
+      hasPrivateKey: !!connectionDetails.privateKey
+    });
+  }
+  
+  return res.json({
+    success: true,
+    isConnected,
+    connectionDetails: isConnected ? {
+      projectId: connectionDetails.projectId,
+      datasetId: connectionDetails.datasetId,
+      tableId: connectionDetails.tableId
+    } : undefined
+  });
+});
+
 // JSON-RPC endpoint with MCP server integration
 app.post('/rpc', async (req, res) => {
   console.log('[SIMPLE-HTTP] RPC request received:', JSON.stringify(req.body));
@@ -547,6 +578,80 @@ app.post('/rpc', async (req, res) => {
       id
     });
   }
+});
+
+// Table access validation endpoint
+app.post('/api/mcp/validate-table-access', (req, res) => {
+  console.log('[SIMPLE-HTTP] REST API - Processing validate-table-access request');
+  console.log('[SIMPLE-HTTP] REST API - Request body:', req.body);
+  
+  // Check if this is a clear request
+  if (req.body && req.body.action === 'clear') {
+    // Clear the connection details from session storage
+    sessionStorage.connectionDetails = null;
+    sessionStorage.isConnected = false;
+    
+    console.log('[SIMPLE-HTTP] REST API - Connection cleared successfully via validate-table-access');
+    
+    return res.json({
+      success: true,
+      message: 'Connection cleared successfully'
+    });
+  }
+  
+  // This is a connection validation request
+  const { projectId, datasetId, tableId, privateKey } = req.body || {};
+  
+  // Validate required fields
+  if (!projectId || !datasetId || !tableId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required fields: projectId, datasetId, tableId'
+    });
+  }
+  
+  // Store connection details in session
+  sessionStorage.connectionDetails = {
+    projectId,
+    datasetId,
+    tableId,
+    privateKey: privateKey || undefined
+  };
+  sessionStorage.isConnected = true;
+  
+  console.log('[SIMPLE-HTTP] REST API - Connection validated and stored in session:', {
+    projectId,
+    datasetId,
+    tableId,
+    hasPrivateKey: !!privateKey
+  });
+  
+  return res.json({
+    success: true,
+    message: 'Connection validated successfully',
+    connectionDetails: {
+      projectId,
+      datasetId,
+      tableId
+    }
+  });
+});
+
+// Connection clear endpoint (legacy support)
+app.post('/api/connection/clear', (req, res) => {
+  console.log('[SIMPLE-HTTP] REST API - Processing connection clear request');
+  console.log('[SIMPLE-HTTP] REST API - Request body:', req.body);
+  
+  // Clear the connection details from session storage
+  sessionStorage.connectionDetails = null;
+  sessionStorage.isConnected = false;
+  
+  console.log('[SIMPLE-HTTP] REST API - Connection cleared successfully');
+  
+  return res.json({
+    success: true,
+    message: 'Connection cleared successfully'
+  });
 });
 
 // Start the server
