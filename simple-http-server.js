@@ -186,7 +186,8 @@ app.post('/rpc', async (req, res) => {
               { name: 'test_connection', description: 'Test connection to MCP server' },
               { name: 'connection/validate-table-access', description: 'Validate BigQuery table access' },
               { name: 'connection/status', description: 'Get current connection status' },
-              { name: 'connection/clear', description: 'Clear current connection' }
+              { name: 'connection/clear', description: 'Clear current connection' },
+              { name: 'connectdatasource/update-session', description: 'Update connection session with data source details' }
             ]
           },
           id
@@ -516,6 +517,70 @@ app.post('/rpc', async (req, res) => {
           },
           id
         });
+      }
+      
+      case 'connectdatasource/update-session': {
+        console.log('[SIMPLE-HTTP] Processing connectdatasource/update-session request');
+        
+        try {
+          const { projectId, datasetId, tableId, dataSourceId } = params;
+          
+          console.log('[SIMPLE-HTTP] Received connection details:', { projectId, datasetId, tableId, dataSourceId });
+          
+          // Validate required fields
+          if (!projectId || !datasetId || !tableId) {
+            console.log('[SIMPLE-HTTP] Missing required connection details');
+            return res.status(400).json({
+              jsonrpc: '2.0',
+              error: {
+                code: -32602,
+                message: 'Missing required connection details'
+              },
+              id
+            });
+          }
+          
+          // Store connection details in session
+          sessionStorage.connectionDetails = {
+            projectId,
+            datasetId,
+            tableId
+          };
+          
+          sessionStorage.isConnected = true;
+          
+          // Store data source ID separately if provided
+          if (dataSourceId) {
+            sessionStorage.dataSourceId = dataSourceId;
+            console.log('[SIMPLE-HTTP] Stored dataSourceId in session:', dataSourceId);
+          }
+          
+          console.log('[SIMPLE-HTTP] Connection details stored in session:', {
+            projectId,
+            datasetId,
+            tableId
+          });
+          
+          return res.json({
+            jsonrpc: '2.0',
+            result: {
+              success: true,
+              message: 'Connection details updated successfully'
+            },
+            id
+          });
+        } catch (error) {
+          console.error('[SIMPLE-HTTP] Error updating connection details:', error);
+          return res.status(500).json({
+            jsonrpc: '2.0',
+            error: {
+              code: -32603,
+              message: error instanceof Error ? error.message : 'Error updating connection details',
+              data: error instanceof Error ? error.stack : undefined
+            },
+            id
+          });
+        }
       }
       
       case 'connection/session-details': {
