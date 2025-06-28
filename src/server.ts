@@ -571,6 +571,10 @@ export class ReportingMCPServer {
     // Register connection router
     this.server.use('/api/connection', connectionRouter);
     
+    // Register connection router at /api/mcp/connectdatasource to match frontend path
+    console.log('SERVER_INIT_3.1: Registering connection router at /api/mcp/connectdatasource');
+    this.server.use('/api/mcp/connectdatasource', connectionRouter);
+    
     // Set up connection UI injection middleware
     this.server.use(createConnectionUIMiddleware());
 
@@ -1028,6 +1032,79 @@ export class ReportingMCPServer {
                   error: {
                     code: -32603,
                     message: error instanceof Error ? error.message : 'Error clearing connection',
+                    data: error instanceof Error ? error.stack : undefined
+                  },
+                  id
+                });
+              }
+              break;
+              
+            case 'connectdatasource/update-session':
+              console.log('[RPC] Processing connectdatasource/update-session request');
+              
+              try {
+                const { projectId, datasetId, tableId, dataSourceId } = params as {
+                  projectId: string;
+                  datasetId: string;
+                  tableId: string;
+                  dataSourceId?: string;
+                };
+                
+                console.log('[RPC] Received connection details:', { projectId, datasetId, tableId, dataSourceId });
+                
+                // Validate required fields
+                if (!projectId || !datasetId || !tableId) {
+                  console.log('[RPC] Missing required connection details');
+                  return res.status(400).json({
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32602,
+                      message: 'Missing required connection details'
+                    },
+                    id
+                  });
+                }
+                
+                // Store connection details in session
+                if (!req.session) {
+                  req.session = {} as any;
+                }
+                
+                req.session.connectionDetails = {
+                  isConnected: true,
+                  projectId,
+                  datasetId,
+                  tableId
+                };
+                
+                // Store data source ID separately if provided
+                if (dataSourceId) {
+                  (req.session as any).dataSourceId = dataSourceId;
+                  console.log('[RPC] Stored dataSourceId in session:', dataSourceId);
+                }
+                
+                console.log('[RPC] Connection details stored in session:', {
+                  projectId,
+                  datasetId,
+                  tableId,
+                  sessionId: req.sessionID
+                });
+                
+                return res.json({
+                  jsonrpc: '2.0',
+                  result: {
+                    success: true,
+                    message: 'Connection details updated successfully'
+                  },
+                  id
+                });
+              } catch (error) {
+                console.error('[RPC] Error updating connection details:', error);
+                return res.status(500).json({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : 'Error updating connection details',
                     data: error instanceof Error ? error.stack : undefined
                   },
                   id
