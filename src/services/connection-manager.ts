@@ -23,9 +23,20 @@ export class ConnectionManager {
    */
   public getSessionConnectionDetails(): any {
     try {
-      // Use the global function to get session connection details
+      console.log('ALTERNATE_DATASOURCE13: ConnectionManager.getSessionConnectionDetails called');
+      
       if (global.getSessionConnectionDetails) {
+        console.log('ALTERNATE_DATASOURCE14: global.getSessionConnectionDetails function exists');
+        
         const sessionDetails = global.getSessionConnectionDetails();
+        console.log('ALTERNATE_DATASOURCE15: Session details retrieved', {
+          hasSessionDetails: !!sessionDetails,
+          projectId: sessionDetails?.projectId ? 'present' : 'not present',
+          datasetId: sessionDetails?.datasetId ? 'present' : 'not present',
+          tableId: sessionDetails?.tableId ? 'present' : 'not present',
+          hasPrivateKey: !!sessionDetails?.privateKey
+        });
+        
         logFlow('CONNECTION_MANAGER', 'INFO', 'Retrieved session connection details', {
           hasSessionDetails: !!sessionDetails,
           projectId: sessionDetails?.projectId ? 'present' : 'not present',
@@ -33,11 +44,17 @@ export class ConnectionManager {
           tableId: sessionDetails?.tableId ? 'present' : 'not present',
           hasPrivateKey: !!sessionDetails?.privateKey
         });
+        
         return sessionDetails;
+      } else {
+        console.log('ALTERNATE_DATASOURCE16: global.getSessionConnectionDetails function does not exist');
       }
     } catch (error) {
+      console.log('ALTERNATE_DATASOURCE17: Error getting session connection details', error);
       logFlow('CONNECTION_MANAGER', 'ERROR', 'Error getting session connection details', error);
     }
+    
+    console.log('ALTERNATE_DATASOURCE18: Returning null from getSessionConnectionDetails');
     return null;
   }
   

@@ -28,6 +28,98 @@ const router = Router();
 // Export the router
 export { router as connectionRouter };
 
+// Define interface for update session request
+interface UpdateSessionRequest {
+  projectId: string;
+  datasetId: string;
+  tableId: string;
+  dataSourceId?: string;
+}
+
+// Update session with connection details from frontend
+const updateSessionConnectionDetails: RequestHandler = (req, res) => {
+  try {
+    console.log('ALTERNATE_DATASOURCE6: Received request to update session connection details');
+    
+    const { projectId, datasetId, tableId, dataSourceId } = req.body as UpdateSessionRequest;
+    
+    console.log('ALTERNATE_DATASOURCE7: Extracted connection details from request body', {
+      projectId,
+      datasetId,
+      tableId,
+      dataSourceId,
+      sessionId: req.sessionID
+    });
+    
+    // Log the received connection details
+    logFlow('CONNECTION-ROUTES', 'INFO', 'Received connection details from frontend', {
+      projectId,
+      datasetId,
+      tableId,
+      dataSourceId,
+      sessionId: req.sessionID
+    });
+    
+    // Validate required fields
+    if (!projectId || !datasetId || !tableId) {
+      console.log('ALTERNATE_DATASOURCE8: Missing required connection details', req.body);
+      logFlow('CONNECTION-ROUTES', 'INFO', 'Missing required connection details', req.body);
+      res.status(400).json({
+        success: false,
+        message: 'Missing required connection details'
+      });
+      return;
+    }
+    
+    console.log('ALTERNATE_DATASOURCE9: Validation passed, storing connection details in session');
+    
+    // Store connection details in session
+    req.session.connectionDetails = {
+      isConnected: true,
+      projectId,
+      datasetId,
+      tableId
+    };
+    
+    // Store data source ID separately if provided
+    if (dataSourceId) {
+      (req.session as any).dataSourceId = dataSourceId;
+      console.log('ALTERNATE_DATASOURCE10: Stored dataSourceId in session:', dataSourceId);
+    }
+    
+    console.log('ALTERNATE_DATASOURCE11: Connection details stored in session', {
+      projectId,
+      datasetId,
+      tableId,
+      sessionId: req.sessionID
+    });
+    
+    // Log that we've saved connection details to the session
+    logFlow('CONNECTION-ROUTES', 'INFO', 'Connection details saved to session from frontend', {
+      projectId,
+      datasetId,
+      tableId,
+      dataSourceId,
+      sessionId: req.sessionID
+    });
+    
+    console.log('ALTERNATE_DATASOURCE12: Sending success response back to client');
+    res.json({
+      success: true,
+      message: 'Connection details updated successfully'
+    });
+  } catch (error) {
+    logFlow('CONNECTION-ROUTES', 'ERROR', 'Error updating connection details', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating connection details'
+    });
+  }
+};
+
+// Register the update session route
+router.post('/update-session', updateSessionConnectionDetails);
+
 // Validate table access
 const validateTableAccess: RequestHandler = async (req, res) => {
   try {
