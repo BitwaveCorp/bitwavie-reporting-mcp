@@ -34,6 +34,7 @@ export class ConnectionManager {
           projectId: sessionDetails?.projectId ? 'present' : 'not present',
           datasetId: sessionDetails?.datasetId ? 'present' : 'not present',
           tableId: sessionDetails?.tableId ? 'present' : 'not present',
+          schemaType: sessionDetails?.schemaType ? 'present' : 'not present',
           hasPrivateKey: !!sessionDetails?.privateKey
         });
         
@@ -42,6 +43,7 @@ export class ConnectionManager {
           projectId: sessionDetails?.projectId ? 'present' : 'not present',
           datasetId: sessionDetails?.datasetId ? 'present' : 'not present',
           tableId: sessionDetails?.tableId ? 'present' : 'not present',
+          schemaType: sessionDetails?.schemaType ? 'present' : 'not present',
           hasPrivateKey: !!sessionDetails?.privateKey
         });
         
@@ -141,6 +143,23 @@ export class ConnectionManager {
   }
   
   /**
+   * Get the schema type from session details or environment variables
+   * @param sessionDetails Optional session connection details
+   * @returns Schema type string or undefined
+   */
+  public getSchemaType(sessionDetails?: any): string | undefined {
+    // Try to get session details if not provided
+    const details = sessionDetails || this.getSessionConnectionDetails();
+    
+    logFlow('CONNECTION_MANAGER', 'INFO', 'getSchemaType', {
+      schemaType: details?.schemaType || 'Not provided',
+      source: details ? 'session' : 'environment'
+    });
+    
+    return details?.schemaType || process.env.SCHEMA_TYPE;
+  }
+  
+  /**
    * Get the fully qualified BigQuery table ID in the format `project.dataset.table`
    * @param sessionDetails Optional session connection details
    * @returns Fully qualified table ID string
@@ -185,24 +204,28 @@ export class ConnectionManager {
     const datasetId = this.getDatasetId(sessionData);
     const tableId = this.getTableId(sessionData);
     const privateKey = this.getPrivateKey(sessionData);
+    const schemaType = this.getSchemaType(sessionData);
     
     // Determine the source of each value
     const projectIdSource = sessionData?.projectId ? 'session' : 'environment';
     const datasetIdSource = sessionData?.datasetId ? 'session' : 'environment';
     const tableIdSource = sessionData?.tableId ? 'session' : 'environment';
     const privateKeySource = privateKey ? 'session' : 'none';
+    const schemaTypeSource = sessionData?.schemaType ? 'session' : (process.env.SCHEMA_TYPE ? 'environment' : 'none');
     
     // Create detailed object for logging
     const connectionDetails = {
       projectId,
       datasetId,
       tableId,
+      schemaType: schemaType || 'Not provided',
       hasPrivateKey: !!privateKey,
       source: sessionDetails && (sessionDetails.projectId || sessionDetails.datasetId || sessionDetails.tableId || privateKey) ? 'session' : 'environment',
       detailedSources: {
         projectId: projectIdSource,
         datasetId: datasetIdSource,
         tableId: tableIdSource,
+        schemaType: schemaTypeSource,
         privateKey: privateKeySource
       },
       sessionDetailsProvided: !!sessionDetails,
