@@ -54,6 +54,7 @@ export interface TranslationResult {
   reportType?: string | undefined;
   reportParameters?: Record<string, any> | undefined;
   processingSteps?: Array<{step: string, description: string}> | undefined;
+  prompt?: string | undefined; // The original prompt sent to the LLM
 }
 
 export class LLMQueryTranslator {
@@ -362,6 +363,7 @@ Only return valid JSON. Do not include any explanations or additional text outsi
         requiresConfirmation,
         confidence: sqlResult.confidence,
         alternativeInterpretations: sqlResult.alternativeInterpretations,
+        prompt: sqlResult.prompt, // Include the prompt in the result
         processingSteps: [
           { step: 'Query Analysis', description: 'Analyzing natural language query' },
           { step: 'Filter Operations', description: filterComponents.description },
@@ -631,6 +633,7 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     interpretedQuery: string;
     confidence: number;
     alternativeInterpretations?: string[];
+    prompt?: string; // Store the prompt used for SQL generation
   }> {
     if (!this.anthropic) {
       throw new Error('Anthropic client not initialized');
@@ -756,15 +759,49 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     // Calculate overall confidence
     const confidence = (filterComponents.confidence + aggregationComponents.confidence) / 2;
     
+    // Create a prompt that summarizes the SQL generation process
+    // This will be useful for error correction
+    const prompt = `
+# SQL Generation Summary
+
+## Original Query
+${query}
+
+## Filter Components
+${filterComponents.description}
+SQL Clause: ${filterComponents.sqlClause}
+
+## Aggregation Components
+${aggregationComponents.aggregationDescription}
+SQL Clause: ${aggregationComponents.aggregationClause}
+
+## Group By
+${aggregationComponents.groupByDescription}
+SQL Clause: ${aggregationComponents.groupByClause}
+
+## Order By
+${aggregationComponents.orderByDescription}
+SQL Clause: ${aggregationComponents.orderByClause}
+
+## Limit
+${aggregationComponents.limitDescription}
+SQL Clause: ${aggregationComponents.limitClause}
+
+## Generated SQL
+${sql}
+`;
+    
     logFlow('LLM_TRANSLATOR', 'EXIT', 'SQL generation completed', {
       sqlLength: sql.length,
-      confidence
+      confidence,
+      hasPrompt: !!prompt
     });
     
     return {
       sql,
       interpretedQuery,
-      confidence
+      confidence,
+      prompt
     };
   }
   
@@ -834,6 +871,110 @@ Respond with ONLY the corrected SQL query, nothing else.`;
       const errorMessage = error instanceof Error ? error.message : String(error);
       logFlow('LLM_TRANSLATOR', 'ERROR', 'Error correcting SQL', { error: errorMessage });
       return null;
+    }
+  }
+
+  /**
+   * Corrects SQL errors with user-friendly explanation and suggestions
+   * 
+   * @param originalQuery Original query context sent to LLM
+   * @param failedSQL Failed SQL query
+   * @param errorMessage Error message from BigQuery
+   * @param userPrompt User's original natural language prompt
+   * @returns Object with explanation, suggestions, and corrected SQL
+   */
+  public async correctSQLWithExplanation(
+    originalQuery: string, 
+    failedSQL: string, 
+    errorMessage: string, 
+    userPrompt: string
+  ): Promise<{
+    explanation: string;
+    suggestions: string[];
+    correctedSQL: string;
+  }> {
+    if (!this.anthropic) {
+      throw new Error('Anthropic client not initialized');
+    }
+    
+    logFlow('LLM_TRANSLATOR', 'ENTRY', 'Attempting to correct SQL with explanation', { 
+      sqlLength: failedSQL.length,
+      errorMessage,
+      userPrompt
+    });
+    
+    try {
+      const prompt = `Hey LLM, I am feeding you an error message and you have 2 objectives:
+
+FIRST: Your objective is to provide an explanation for the user of this error message in natural language coupled with 1 or 2 suggested prompts that they could send that may bypass this error. Remember that the suggested prompts should be similar to their original prompt entry which in this case was [${userPrompt}]
+
+SECOND: Your objective is to execute one of those alternatives and provide the SQL for it as well.
+
+PRIOR CONTEXT:
+(A) ${originalQuery}
+(B) User Entered: ${userPrompt}
+
+ERROR DETAILS:
+Failed SQL: ${failedSQL}
+Error Message: ${errorMessage}
+
+Please respond in the following JSON format:
+{
+  "explanation": "Clear explanation of the error in user-friendly terms",
+  "suggestions": ["Alternative prompt 1", "Alternative prompt 2"],
+  "correctedSQL": "SELECT ... FROM ... WHERE ..."
+}`;
+
+      // Log the prompt being sent to the LLM
+      console.log('PROMPT_SENT_TO_LLM_FOR_ERROR_CORRECTION:', prompt);
+
+      // Call Claude to get explanation and correction
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-opus-20240229',
+        max_tokens: 1000,
+        temperature: 0.2,
+        system: "You are an expert SQL assistant specializing in BigQuery syntax.",
+        messages: [{ role: "user", content: prompt }]
+      });
+
+      const content = this.getResponseText(response);
+      
+      try {
+        // Try to parse the JSON response
+        const result = JSON.parse(content);
+        
+        logFlow('LLM_TRANSLATOR', 'EXIT', 'SQL correction with explanation completed', {
+          hasExplanation: !!result.explanation,
+          suggestionCount: result.suggestions?.length || 0,
+          hasCorrectedSQL: !!result.correctedSQL
+        });
+        
+        return {
+          explanation: result.explanation || `The error occurred because: ${errorMessage}`,
+          suggestions: Array.isArray(result.suggestions) ? result.suggestions : [`Try rephrasing your query: "${userPrompt}"`],
+          correctedSQL: result.correctedSQL || ""
+        };
+      } catch (parseError) {
+        logFlow('LLM_TRANSLATOR', 'INFO', 'Error parsing LLM response as JSON', { 
+          error: parseError instanceof Error ? parseError.message : String(parseError),
+          rawResponse: content
+        });
+        
+        return {
+          explanation: `The error occurred because: ${errorMessage}`,
+          suggestions: [`Try rephrasing your query: "${userPrompt}"`],
+          correctedSQL: ""
+        };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      logFlow('LLM_TRANSLATOR', 'ERROR', 'Error in correctSQLWithExplanation', { error: errorMsg });
+      
+      return {
+        explanation: `I couldn't analyze the error. The original error was: ${errorMessage}`,
+        suggestions: [`Try rephrasing your query: "${userPrompt}"`],
+        correctedSQL: ""
+      };
     }
   }
 }

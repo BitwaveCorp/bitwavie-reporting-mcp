@@ -34,6 +34,9 @@ export interface ExecutionResult {
     originalSql: string;
     finalSql: string;
   };
+  // New fields for enhanced error handling
+  explanation?: string;  // User-friendly explanation of the error
+  suggestions?: string[]; // Suggested alternative prompts for the user
 }
 
 export interface ConnectionDetails {
@@ -91,12 +94,17 @@ export class QueryExecutor {
    * Execute a SQL query
    * @param sql The SQL query to execute
    * @param parameters Optional query parameters
+   * @param connectionDetails Optional connection details
+   * @param originalPrompt Optional original prompt used to generate the SQL
+   * @param userQuery Optional user's original natural language query
    * @returns Execution result with data or error
    */
   public async executeQuery(
     sql: string,
     parameters?: Record<string, any>,
-    connectionDetails?: ConnectionDetails
+    connectionDetails?: ConnectionDetails,
+    originalPrompt?: string,
+    userQuery?: string
   ): Promise<ExecutionResult> {
     const startTime = Date.now();
     let retryCount = 0;
@@ -108,7 +116,9 @@ export class QueryExecutor {
       hasParameters: !!parameters,
       parameterCount: parameters ? Object.keys(parameters).length : 0,
       hasConnectionDetails: !!connectionDetails,
-      connectionSource: connectionDetails ? 'session' : 'environment'
+      connectionSource: connectionDetails ? 'session' : 'environment',
+      hasOriginalPrompt: !!originalPrompt,
+      hasUserQuery: !!userQuery
     });
     
     // First, validate the SQL
@@ -122,30 +132,182 @@ export class QueryExecutor {
           retryCount
         });
         
-        const correctedSql = await this.llmTranslator.correctSQLError(
-          currentSql,
-          validationError.message
-        );
-        
-        if (correctedSql) {
-          currentSql = correctedSql;
-          retryCount++;
-          
-          // Validate the corrected SQL
+        // If we have the original prompt and user query, use enhanced error correction
+        if (originalPrompt && userQuery) {
           try {
-            await this.validateSql(currentSql);
-          } catch (secondValidationError: any) {
-            // If validation still fails, return the error
+            const correction = await this.llmTranslator.correctSQLWithExplanation(
+              originalPrompt,
+              currentSql,
+              validationError.message,
+              userQuery
+            );
+            
+            // If we got a corrected SQL, try that
+            if (correction.correctedSQL) {
+              currentSql = correction.correctedSQL;
+              retryCount++;
+              
+              // Validate the corrected SQL
+              try {
+                await this.validateSql(currentSql);
+                
+                // SQL is valid, continue execution with the corrected SQL
+                logFlow('QUERY_EXECUTOR', 'INFO', 'Enhanced correction successful', {
+                  originalLength: sql.length,
+                  correctedLength: currentSql.length
+                });
+              } catch (secondValidationError: any) {
+                // If validation still fails, return enhanced error info
+                const executionTimeMs = Date.now() - startTime;
+                
+                logFlow('QUERY_EXECUTOR', 'ERROR', 'Validation failed after enhanced correction', {
+                  error: secondValidationError.message,
+                  executionTimeMs
+                });
+                
+                return {
+                  success: false,
+                  error: this.formatError(secondValidationError),
+                  metadata: {
+                    executionTimeMs,
+                    retryCount,
+                    originalSql: sql,
+                    finalSql: currentSql
+                  },
+                  explanation: correction.explanation,
+                  suggestions: correction.suggestions
+                };
+              }
+            } else {
+              // If no corrected SQL but we have explanation, return that
+              const executionTimeMs = Date.now() - startTime;
+              
+              logFlow('QUERY_EXECUTOR', 'ERROR', 'Enhanced correction provided no SQL', {
+                error: validationError.message,
+                executionTimeMs,
+                hasExplanation: !!correction.explanation,
+                suggestionCount: correction.suggestions?.length || 0
+              });
+              
+              return {
+                success: false,
+                error: this.formatError(validationError),
+                metadata: {
+                  executionTimeMs,
+                  retryCount,
+                  originalSql: sql,
+                  finalSql: currentSql
+                },
+                explanation: correction.explanation,
+                suggestions: correction.suggestions
+              };
+            }
+          } catch (correctionError) {
+            // Fall back to simple correction if enhanced correction fails
+            logFlow('QUERY_EXECUTOR', 'ERROR', 'Enhanced correction failed, falling back', {
+              error: correctionError instanceof Error ? correctionError.message : String(correctionError)
+            });
+            
+            // Fall back to simple correction
+            const correctedSql = await this.llmTranslator.correctSQLError(
+              currentSql,
+              validationError.message
+            );
+            
+            if (correctedSql) {
+              currentSql = correctedSql;
+              retryCount++;
+              
+              // Validate the corrected SQL
+              try {
+                await this.validateSql(currentSql);
+              } catch (secondValidationError: any) {
+                // If validation still fails, return the error
+                const executionTimeMs = Date.now() - startTime;
+                
+                logFlow('QUERY_EXECUTOR', 'ERROR', 'Validation failed after fallback correction', {
+                  error: secondValidationError.message,
+                  executionTimeMs
+                });
+                
+                return {
+                  success: false,
+                  error: this.formatError(secondValidationError),
+                  metadata: {
+                    executionTimeMs,
+                    retryCount,
+                    originalSql: sql,
+                    finalSql: currentSql
+                  }
+                };
+              }
+            } else {
+              // If correction failed, return the original validation error
+              const executionTimeMs = Date.now() - startTime;
+              
+              logFlow('QUERY_EXECUTOR', 'ERROR', 'Fallback correction failed', {
+                error: validationError.message,
+                executionTimeMs
+              });
+              
+              return {
+                success: false,
+                error: this.formatError(validationError),
+                metadata: {
+                  executionTimeMs,
+                  retryCount,
+                  originalSql: sql,
+                  finalSql: currentSql
+                }
+              };
+            }
+          }
+        } else {
+          // Use the simple correction if we don't have original prompt and user query
+          const correctedSql = await this.llmTranslator.correctSQLError(
+            currentSql,
+            validationError.message
+          );
+          
+          if (correctedSql) {
+            currentSql = correctedSql;
+            retryCount++;
+            
+            // Validate the corrected SQL
+            try {
+              await this.validateSql(currentSql);
+            } catch (secondValidationError: any) {
+              // If validation still fails, return the error
+              const executionTimeMs = Date.now() - startTime;
+              
+              logFlow('QUERY_EXECUTOR', 'ERROR', 'Validation failed after simple correction', {
+                error: secondValidationError.message,
+                executionTimeMs
+              });
+              
+              return {
+                success: false,
+                error: this.formatError(secondValidationError),
+                metadata: {
+                  executionTimeMs,
+                  retryCount,
+                  originalSql: sql,
+                  finalSql: currentSql
+                }
+              };
+            }
+          } else {
+            // If correction failed, return the original validation error
             const executionTimeMs = Date.now() - startTime;
             
-            logFlow('QUERY_EXECUTOR', 'ERROR', 'Validation failed after correction', {
-              error: secondValidationError.message,
+            logFlow('QUERY_EXECUTOR', 'ERROR', 'Simple correction failed', {
+              error: validationError.message,
               executionTimeMs
             });
             
             return {
               success: false,
-              error: this.formatError(secondValidationError),
+              error: this.formatError(validationError),
               metadata: {
                 executionTimeMs,
                 retryCount,
@@ -154,25 +316,6 @@ export class QueryExecutor {
               }
             };
           }
-        } else {
-          // If correction failed, return the original validation error
-          const executionTimeMs = Date.now() - startTime;
-          
-          logFlow('QUERY_EXECUTOR', 'ERROR', 'Correction failed', {
-            error: validationError.message,
-            executionTimeMs
-          });
-          
-          return {
-            success: false,
-            error: this.formatError(validationError),
-            metadata: {
-              executionTimeMs,
-              retryCount,
-              originalSql: sql,
-              finalSql: currentSql
-            }
-          };
         }
       } else {
         // If we don't have an LLM translator or reached max retries, return the validation error

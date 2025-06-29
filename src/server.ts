@@ -377,6 +377,9 @@ export interface AnalyzeDataResponse {
   error?: string;
   originalQuery?: string;
   translationResult?: TranslationResult;
+  // Enhanced error handling fields
+  explanation?: string;  // User-friendly explanation of the error from LLM
+  suggestions?: string[]; // Alternative prompts suggested by the LLM
 }
 
 interface TestConnectionResponse {
@@ -1688,7 +1691,7 @@ export class ReportingMCPServer {
           examplePrompt = '/lots-report asOfDate=2025-05-31';
           break;
         case 'monthly-activity-report':
-          examplePrompt = '/monthly-activity-report walletId=Jw61ii7UP5yp6NHtAGR2 startDate=2025-01-01 endDate=2025-06-30';
+          examplePrompt = '/monthly-activity-report walletId=M75lAQzFhLYapfzaptQ3 startDate=2025-01-01 endDate=2025-06-30';
           break;
         default:
           examplePrompt = `/${report.id}`;
@@ -2779,7 +2782,14 @@ export class ReportingMCPServer {
         logFlow('WALKTHROUGH_SHOWTABLE8', 'INFO', 'No session connection details found, using environment variables');
       }
       
-      const executionResult = await this.queryExecutor.executeQuery(sql, undefined, connectionDetails);
+      // Pass the original prompt and user query for enhanced error handling
+      const executionResult = await this.queryExecutor.executeQuery(
+        sql, 
+        undefined, 
+        connectionDetails,
+        sessionData.translationResult?.prompt, // Original prompt sent to LLM
+        req?.body?.query || sessionData.query // User's original natural language query
+      );
       
       // Store the execution result in session data
       if (executionResult) {
@@ -2788,17 +2798,56 @@ export class ReportingMCPServer {
       
       // Handle query execution error
       if (executionResult.error) {
-        const errorContent = [{ 
+        const errorContent = [];
+        
+        // Add the basic error message
+        errorContent.push({ 
           type: 'text', 
           text: `Query execution failed: ${executionResult.error.message}` 
-        }];
+        });
         
-        return {
+        // If we have an enhanced explanation from the LLM, add it
+        if (executionResult.explanation) {
+          errorContent.push({
+            type: 'text',
+            text: `\n\n**Explanation:** ${executionResult.explanation}`
+          });
+        }
+        
+        // If we have alternative suggestions, add them
+        if (executionResult.suggestions && executionResult.suggestions.length > 0) {
+          errorContent.push({
+            type: 'text',
+            text: `\n\n**Try asking instead:**`
+          });
+          
+          // Add each suggestion as a separate content item
+          executionResult.suggestions.forEach((suggestion, index) => {
+            errorContent.push({
+              type: 'text',
+              text: `\n${index + 1}. ${suggestion}`
+            });
+          });
+        }
+        
+        // Prepare the response object with explicit undefined handling for optional properties
+        const response: AnalyzeDataResponse = {
           content: errorContent,
           error: executionResult.error.message,
           originalQuery: sessionData.query,
           needsConfirmation: false
         };
+        
+        // Only add explanation and suggestions if they exist
+        if (executionResult.explanation !== undefined) {
+          response.explanation = executionResult.explanation;
+        }
+        
+        if (executionResult.suggestions !== undefined) {
+          response.suggestions = executionResult.suggestions;
+        }
+        
+        return response;
       }
       
       // Format the results
