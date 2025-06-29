@@ -1611,19 +1611,27 @@ export class ReportingMCPServer {
     const connectionDetails = connectionManager.getSessionConnectionDetails();
     const schemaType = connectionDetails?.schemaType;
     
+    console.log('REPORT_BY_SCHEMA1: Schema type from connection details:', schemaType);
+    
     // Get all reports
     const allReports = this.reportRegistry.getAllReports();
+    
+    console.log('REPORT_BY_SCHEMA2: Total reports available:', allReports.length);
+    console.log('REPORT_BY_SCHEMA2: Report IDs:', allReports.map(r => r.id));
     
     // Split reports into schema-compatible and non-schema-compatible
     let schemaCompatibleReports: any[] = [];
     let nonSchemaReports: any[] = [];
     
     if (schemaType) {
+      console.log('REPORT_BY_SCHEMA3: Filtering reports for schema type:', schemaType);
+      
       // Filter reports by schema type
       // Use getAllReports and filter manually instead of getReportsForSchemaType
       schemaCompatibleReports = this.reportRegistry.getAllReports().filter(report => {
         // Include reports that don't specify compatibility (assumed compatible with all)
         const compatibleTypes = (report as any).compatibleSchemaTypes;
+        console.log(`REPORT_BY_SCHEMA3: Report ${report.id} compatibleTypes:`, compatibleTypes);
         return !compatibleTypes || compatibleTypes.includes(schemaType);
       });
       
@@ -1632,7 +1640,11 @@ export class ReportingMCPServer {
         const compatibleTypes = (report as any).compatibleSchemaTypes;
         return compatibleTypes && !compatibleTypes.includes(schemaType);
       });
+      
+      console.log('REPORT_BY_SCHEMA4: Schema compatible reports:', schemaCompatibleReports.map(r => r.id));
+      console.log('REPORT_BY_SCHEMA4: Non-schema reports:', nonSchemaReports.map(r => r.id));
     } else {
+      console.log('REPORT_BY_SCHEMA3: No schema type specified, all reports are compatible');
       // If no schema type is specified, all reports are considered compatible
       schemaCompatibleReports = allReports;
     }
@@ -1988,15 +2000,22 @@ export class ReportingMCPServer {
       const connectionDetails = connectionManager.getSessionConnectionDetails();
       const schemaType = connectionDetails?.schemaType;
       
+      console.log('REPORT_BY_SCHEMA_LLM1: Schema type from connection details:', schemaType);
+      
       // Get reports filtered by schema type if available
       const allReports = this.reportRegistry.getAllReports();
+      console.log('REPORT_BY_SCHEMA_LLM2: Total reports available:', allReports.length);
+      
       const availableReports = schemaType ? 
         allReports.filter(report => {
           // Include reports that don't specify compatibility (assumed compatible with all)
           const compatibleTypes = (report as any).compatibleSchemaTypes;
+          console.log(`REPORT_BY_SCHEMA_LLM3: Report ${report.id} compatibleTypes:`, compatibleTypes);
           return !compatibleTypes || compatibleTypes.includes(schemaType);
         }) : 
         allReports;
+      
+      console.log('REPORT_BY_SCHEMA_LLM4: Filtered reports:', availableReports.map(r => r.id));
       
       // Log the schema type and filtered reports
       logFlow('SERVER', 'INFO', 'Filtering reports for LLM context by schema type', {
