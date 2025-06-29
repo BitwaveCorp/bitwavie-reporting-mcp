@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import session from 'express-session';
 import cors from 'cors';
 import { ReportParameters } from './types/actions-report';
-import { ReportRegistry } from './services/report-registry.js';
+import { ReportRegistry, ReportMetadata } from './services/report-registry.js';
 
 // Import connection router and UI injector
 import { connectionRouter } from './routes/connection-router.js';
@@ -1996,7 +1996,7 @@ export class ReportingMCPServer {
       });
       
       // Create context for the LLM with report information and required parameters
-      const reportContext = availableReports.map(report => ({
+      const reportContext = availableReports.map((report: ReportMetadata) => ({
         id: report.id,
         name: report.name,
         description: report.description || '',
