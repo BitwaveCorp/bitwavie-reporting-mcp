@@ -1043,14 +1043,15 @@ export class ReportingMCPServer {
               console.log('[RPC] Processing connectdatasource/update-session request');
               
               try {
-                const { projectId, datasetId, tableId, dataSourceId } = params as {
+                const { projectId, datasetId, tableId, dataSourceId, schemaType } = params as {
                   projectId: string;
                   datasetId: string;
                   tableId: string;
                   dataSourceId?: string;
+                  schemaType?: string;
                 };
                 
-                console.log('[RPC] Received connection details:', { projectId, datasetId, tableId, dataSourceId });
+                console.log('[RPC] Received connection details:', { projectId, datasetId, tableId, dataSourceId, schemaType });
                 
                 // Validate required fields
                 if (!projectId || !datasetId || !tableId) {
@@ -1074,7 +1075,8 @@ export class ReportingMCPServer {
                   isConnected: true,
                   projectId,
                   datasetId,
-                  tableId
+                  tableId,
+                  ...(schemaType ? { schemaType } : {})
                 };
                 
                 // Store data source ID separately if provided
@@ -1087,6 +1089,7 @@ export class ReportingMCPServer {
                   projectId,
                   datasetId,
                   tableId,
+                  ...(schemaType ? { schemaType } : {}),
                   sessionId: req.sessionID
                 });
                 
