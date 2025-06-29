@@ -4,14 +4,19 @@ FROM node:18-alpine AS builder
 # Set working directory
 WORKDIR /app
 
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Clean install dependencies
+RUN npm cache clean --force && \
+    rm -rf node_modules && \
+    npm ci --silent
+
 # Copy all files
 COPY . .
 
-# Install dependencies
-RUN npm ci --silent
-
-# Build TypeScript
-RUN npm run build
+# Build TypeScript with verbose output
+RUN npm run build || (echo "Build failed with errors" && exit 1)
 
 # Production stage
 FROM node:18-alpine AS production
