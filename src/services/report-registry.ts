@@ -33,6 +33,7 @@ export interface ReportMetadata {
   description: string;
   keywords: string[];
   parameters: ReportParameterMetadata[];
+  compatibleSchemaTypes?: string[]; // List of schema types this report is compatible with
 }
 
 /**
@@ -75,6 +76,7 @@ export class ReportRegistry {
       name: 'Inventory Balance Report',
       description: 'Point-in-time snapshot of current inventory positions including quantity, cost basis, carrying value, and adjustments',
       keywords: ['inventory', 'balance', 'position', 'holdings', 'assets', 'snapshot', 'current', 'portfolio'],
+      compatibleSchemaTypes: ['actions'],
       parameters: [
         {
           name: 'asOfDate',
@@ -104,6 +106,7 @@ export class ReportRegistry {
       name: 'Valuation Rollforward Report',
       description: 'Period-based rollforward movements showing cost basis, impairment, carrying value, and market value changes',
       keywords: ['valuation', 'rollforward', 'movement', 'changes', 'period', 'cost basis', 'impairment', 'carrying value'],
+      compatibleSchemaTypes: ['actions'],
       parameters: [
         {
           name: 'startDate',
@@ -132,6 +135,7 @@ export class ReportRegistry {
       name: 'Lots Report',
       description: 'Detailed view of individual lots with acquisition date, cost basis, and current valuation',
       keywords: ['lots', 'acquisitions', 'purchases', 'detail', 'fifo', 'lifo', 'tax lots', 'cost basis'],
+      compatibleSchemaTypes: ['actions'],
       parameters: [
         {
           name: 'asOfDate',
@@ -176,6 +180,26 @@ export class ReportRegistry {
    */
   public getAllReports(): ReportMetadata[] {
     return Array.from(this.reports.values()).map(entry => entry.metadata);
+  }
+  
+  /**
+   * Get reports compatible with a specific schema type
+   * @param schemaType Schema type to filter by
+   * @returns Array of report metadata compatible with the specified schema type
+   */
+  public getReportsForSchemaType(schemaType?: string): ReportMetadata[] {
+    if (!schemaType) {
+      // If no schema type provided, return all reports
+      return this.getAllReports();
+    }
+    
+    // Filter reports by compatibility with the specified schema type
+    return this.getAllReports().filter(report => 
+      // Include reports that don't specify compatibility (assumed compatible with all)
+      !report.compatibleSchemaTypes || 
+      // Or reports that explicitly list this schema type
+      report.compatibleSchemaTypes.includes(schemaType)
+    );
   }
   
   /**
