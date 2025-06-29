@@ -9,12 +9,14 @@
 import { BigQuery, Dataset, Table } from '@google-cloud/bigquery';
 import { logFlow } from '../utils/logging.js';
 import { ConnectionManager } from './connection-manager.js';
+import { SchemaTypeRegistry, SchemaTypeDefinition } from './schema-type-registry.js';
 
 // Types
 export interface SchemaConfig {
   projectId: string;
   datasetId: string;
   tableId: string;
+  schemaType?: string;       // Type of schema (e.g., 'actions', 'canton_transaction')
   refreshIntervalMs?: number; // Default: 5 minutes
 }
 
@@ -46,6 +48,7 @@ export class SchemaManager {
   private dataset: Dataset | null = null;
   private table: Table | null = null;
   private config: SchemaConfig | null = null;
+  private schemaTypeRegistry: SchemaTypeRegistry;
   
   private schema: TableSchema | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
@@ -162,6 +165,7 @@ export class SchemaManager {
   
   constructor() {
     // Initialize empty - configuration happens via configure()
+    this.schemaTypeRegistry = new SchemaTypeRegistry();
   }
   
   /**
@@ -331,13 +335,24 @@ export class SchemaManager {
    */
   public getSchemaForLLM(): string {
     if (!this.schema) {
+      console.log('SCHEMA_CHOICE1: No schema available');
       return "No schema information available.";
     }
     
     let schemaText = `Table Schema (${this.config?.tableId}):\n\n`;
     
-    // Group columns by category for better organization
-    const categories: Record<string, ColumnMetadata[]> = {
+    // Check if we have a known schema type
+    const schemaType = this.config?.schemaType ? 
+      this.schemaTypeRegistry.getSchemaTypeById(this.config.schemaType) : null;
+    
+    if (schemaType) {
+      console.log(`SCHEMA_CHOICE2: Using known schema type: ${schemaType.id}`);
+      return this.getSchemaForLLMFromKnownType(schemaType);
+    } else {
+      console.log('SCHEMA_CHOICE3: Using generic schema categorization');
+      
+      // Group columns by category for better organization
+      const categories: Record<string, ColumnMetadata[]> = {
       'Time': [],
       'Asset': [],
       'Quantity': [],
@@ -484,9 +499,180 @@ export class SchemaManager {
       schemaText += '\n';
     });
     
+      return schemaText;
+    }
+    
     return schemaText;
   }
   
+  /**
+   * Generate schema information for LLM from a known schema type
+   * @param schemaType The schema type definition
+   * @returns Formatted schema information string
+   */
+  private getSchemaForLLMFromKnownType(schemaType: SchemaTypeDefinition): string {
+    console.log(`SCHEMA_CHOICE4: Generating schema info for ${schemaType.id}`);
+    
+    let schemaText = `Table Schema (${this.config?.tableId}) - Type: ${schemaType.name}\n\n`;
+    schemaText += `${schemaType.description}\n\n`;
+    
+    // Use schema-specific categories if available, otherwise use default categories
+    const categories: Record<string, ColumnMetadata[]> = {};
+    
+    if (schemaType.columnCategories) {
+      console.log('SCHEMA_CHOICE5: Using schema-specific column categories');
+      
+      // Initialize categories
+      Object.keys(schemaType.columnCategories).forEach(category => {
+        categories[category] = [];
+      });
+      
+      // Add an "Other" category for uncategorized columns
+      categories['Other'] = [];
+      
+      // Categorize columns based on schema type definition
+      if (this.schema && this.schema.columns) {
+        this.schema.columns.forEach(col => {
+          let categorized = false;
+          
+          // Find which category this column belongs to
+          for (const [category, columnNames] of Object.entries(schemaType.columnCategories || {})) {
+            if (Array.isArray(columnNames) && columnNames.includes(col.name)) {
+              if (categories[category]) {
+                categories[category].push(col);
+              }
+              categorized = true;
+              break;
+            }
+          }
+          
+          // If not found in any category, add to "Other"
+          if (!categorized && categories['Other']) {
+            categories['Other'].push(col);
+          }
+        });
+      }
+    } else {
+      console.log('SCHEMA_CHOICE6: No schema-specific categories, using generic categorization');
+      // Fall back to generic categorization
+      categories['Time'] = [];
+      categories['Asset'] = [];
+      categories['Quantity'] = [];
+      categories['Transaction'] = [];
+      categories['Identifier'] = [];
+      categories['Wallet'] = [];
+      categories['Pricing'] = [];
+      categories['Status'] = [];
+      categories['Valuation'] = [];
+      categories['Address'] = [];
+      categories['Tagging'] = [];
+      categories['Metadata'] = [];
+      categories['Error'] = [];
+      categories['Inventory'] = [];
+      categories['Entity'] = [];
+      categories['Currency'] = [];
+      categories['Account'] = [];
+      categories['Other'] = [];
+      
+      // Use generic categorization logic
+      if (this.schema && this.schema.columns) {
+        this.schema.columns.forEach(col => {
+          const name = col.name.toLowerCase();
+          
+          // Use a safer approach with default arrays if a category doesn't exist
+          const addToCategory = (category: string) => {
+            if (categories[category]) {
+              categories[category].push(col);
+            }
+          };
+          
+          // Time columns
+          if (name.includes('time') || name.includes('date') || name.includes('timestamp')) {
+            addToCategory('Time');
+          }
+          // Asset columns
+          else if (name.includes('asset') || name.includes('coin') || name.includes('ticker')) {
+            addToCategory('Asset');
+          }
+          // Quantity columns
+          else if (name.includes('quantity') || name.includes('amount') || name.includes('balance') || 
+                  name.includes('count') || name.includes('total')) {
+            addToCategory('Quantity');
+          }
+          // Transaction columns
+          else if (name.includes('transaction') || name.includes('txn') || name.includes('tx') || 
+                  name.includes('trade') || name.includes('order')) {
+            addToCategory('Transaction');
+          }
+          // Other categories follow the same pattern as in the original method
+          else {
+            addToCategory('Other');
+          }
+        });
+      }
+    }
+    
+    // Format each category
+    Object.entries(categories).forEach(([category, columns]) => {
+      if (columns.length === 0) return;
+      
+      schemaText += `${category} Columns:\n`;
+      
+      columns.forEach(col => {
+        // Use schema-specific description if available
+        const description = schemaType.columnDescriptions?.[col.name] || col.description;
+        
+        // Highlight if this is a required column
+        const isRequired = schemaType.minimumRequiredColumns.includes(col.name);
+        
+        schemaText += `- ${col.name} (${col.type})${isRequired ? ' [REQUIRED]' : ''}: ${description}\n`;
+        
+        // Add sample values if available
+        if (col.sampleValues && col.sampleValues.length > 0) {
+          const samples = col.sampleValues.slice(0, 3).map(v => 
+            typeof v === 'string' ? `"${v}"` : v
+          ).join(', ');
+          schemaText += `  Sample values: ${samples}...\n`;
+        }
+        
+        // Add statistics if available
+        if (col.statistics) {
+          const stats = [];
+          if (col.statistics.min !== undefined) stats.push(`min: ${col.statistics.min}`);
+          if (col.statistics.max !== undefined) stats.push(`max: ${col.statistics.max}`);
+          if (col.statistics.distinctCount !== undefined) stats.push(`distinct values: ${col.statistics.distinctCount}`);
+          
+          if (stats.length > 0) {
+            schemaText += `  Statistics: ${stats.join(', ')}\n`;
+          }
+        }
+      });
+      
+      schemaText += '\n';
+    });
+    
+    // Add semantic rules if available
+    if (schemaType.simpleSemanticRules && schemaType.simpleSemanticRules.length > 0) {
+      schemaText += "Column Relationships and Rules:\n";
+      schemaType.simpleSemanticRules.forEach((rule: string) => {
+        schemaText += `- ${rule}\n`;
+      });
+      schemaText += '\n';
+    }
+    
+    // Add example queries if available
+    if (schemaType.exampleQueries && schemaType.exampleQueries.length > 0) {
+      schemaText += "Example Queries:\n";
+      schemaType.exampleQueries.forEach((example) => {
+        schemaText += `- ${example.description}:\n`;
+        schemaText += `  Natural Language: "${example.query}"\n`;
+        schemaText += `  SQL: ${example.sql}\n\n`;
+      });
+    }
+    
+    return schemaText;
+  }
+
   /**
    * Start the schema refresh timer
    */
@@ -614,8 +800,7 @@ export class SchemaManager {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logFlow('SCHEMA_MANAGER', 'ERROR', 'Error refreshing schema', { error: errorMessage });
-      console.error('Error refreshing schema:', error);
+      logFlow('SCHEMA_MANAGER', 'ERROR', 'Error refreshing schema', { error: errorMessage });      console.error('Error refreshing schema:', error);
       throw error;
     } finally {
       this.refreshing = false;

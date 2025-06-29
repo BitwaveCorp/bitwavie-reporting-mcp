@@ -1679,7 +1679,7 @@ export class ReportingMCPServer {
           examplePrompt = '/lots-report asOfDate=2025-05-31';
           break;
         case 'monthly-activity-report':
-          examplePrompt = '/monthly-activity-report walletId=wallet123 startDate=2025-01-01 endDate=2025-06-30';
+          examplePrompt = '/monthly-activity-report walletId=Jw61ii7UP5yp6NHtAGR2 startDate=2025-01-01 endDate=2025-06-30';
           break;
         default:
           examplePrompt = `/${report.id}`;
