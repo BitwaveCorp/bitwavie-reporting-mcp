@@ -438,6 +438,9 @@ Respond in JSON format with the following structure:
 }
 
 If there are no explicit filters in the query, use a default filter that includes all data (e.g., "1=1").`;
+  
+  // Log the prompt for debugging
+  console.log('PROMPT_SENT_TO_LLM:\n', filterPrompt);
 
     try {
       // Call Claude to analyze filter operations
@@ -547,6 +550,9 @@ Respond in JSON format with the following structure:
 }
 
 If the query doesn't specify any aggregation, default to selecting all columns.`;
+  
+  // Log the prompt for debugging
+  console.log('PROMPT_SENT_TO_LLM:\n', aggregationPrompt);
 
     try {
       // Call Claude to analyze aggregation operations
