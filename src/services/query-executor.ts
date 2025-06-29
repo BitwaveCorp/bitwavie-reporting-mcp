@@ -42,6 +42,7 @@ export interface ConnectionDetails {
   tableId?: string;
   privateKey?: string;
   isConnected?: boolean;
+  schemaType?: string;
 }
 
 export class QueryExecutor {

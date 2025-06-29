@@ -11,6 +11,7 @@ export interface ConnectionDetails {
   datasetId: string;
   tableId: string;
   isConnected: boolean;
+  schemaType?: string;
 }
 
 // Request to validate connection details

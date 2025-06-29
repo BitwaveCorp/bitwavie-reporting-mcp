@@ -34,6 +34,7 @@ interface UpdateSessionRequest {
   datasetId: string;
   tableId: string;
   dataSourceId?: string;
+  schemaType?: string;
 }
 
 // Update session with connection details from frontend
@@ -41,13 +42,14 @@ const updateSessionConnectionDetails: RequestHandler = (req, res) => {
   try {
     console.log('ALTERNATE_DATASOURCE6: Received request to update session connection details');
     
-    const { projectId, datasetId, tableId, dataSourceId } = req.body as UpdateSessionRequest;
+    const { projectId, datasetId, tableId, dataSourceId, schemaType } = req.body as UpdateSessionRequest;
     
     console.log('ALTERNATE_DATASOURCE7: Extracted connection details from request body', {
       projectId,
       datasetId,
       tableId,
       dataSourceId,
+      schemaType,
       sessionId: req.sessionID
     });
     
@@ -57,6 +59,7 @@ const updateSessionConnectionDetails: RequestHandler = (req, res) => {
       datasetId,
       tableId,
       dataSourceId,
+      schemaType,
       sessionId: req.sessionID
     });
     
@@ -78,7 +81,8 @@ const updateSessionConnectionDetails: RequestHandler = (req, res) => {
       isConnected: true,
       projectId,
       datasetId,
-      tableId
+      tableId,
+      ...(schemaType ? { schemaType } : {})
     };
     
     // Store data source ID separately if provided
@@ -91,6 +95,7 @@ const updateSessionConnectionDetails: RequestHandler = (req, res) => {
       projectId,
       datasetId,
       tableId,
+      schemaType,
       sessionId: req.sessionID
     });
     
@@ -100,6 +105,7 @@ const updateSessionConnectionDetails: RequestHandler = (req, res) => {
       datasetId,
       tableId,
       dataSourceId,
+      schemaType,
       sessionId: req.sessionID
     });
     
@@ -356,7 +362,8 @@ const checkConnectionStatus: RequestHandler = (req, res) => {
     const connectionDetails = isConnected ? {
       projectId: req.session.connectionDetails?.projectId,
       datasetId: req.session.connectionDetails?.datasetId,
-      tableId: req.session.connectionDetails?.tableId
+      tableId: req.session.connectionDetails?.tableId,
+      ...(req.session.connectionDetails?.schemaType ? { schemaType: req.session.connectionDetails.schemaType } : {})
     } : null;
     
     // Log the connection details being returned
@@ -365,7 +372,8 @@ const checkConnectionStatus: RequestHandler = (req, res) => {
       hasConnectionDetails: !!connectionDetails,
       projectId: connectionDetails?.projectId || 'Not provided',
       datasetId: connectionDetails?.datasetId || 'Not provided',
-      tableId: connectionDetails?.tableId || 'Not provided'
+      tableId: connectionDetails?.tableId || 'Not provided',
+      schemaType: connectionDetails?.schemaType || 'Not provided'
     });
     
     res.json({

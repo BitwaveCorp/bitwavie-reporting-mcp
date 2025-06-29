@@ -27,13 +27,15 @@ function getCurrentConnectionDetails() {
       projectId: sessionStorage.connectionDetails.projectId,
       datasetId: sessionStorage.connectionDetails.datasetId,
       tableId: sessionStorage.connectionDetails.tableId,
-      privateKey: sessionStorage.connectionDetails.privateKey ? '[REDACTED]' : undefined
+      privateKey: sessionStorage.connectionDetails.privateKey ? '[REDACTED]' : undefined,
+      ...(sessionStorage.connectionDetails.schemaType ? { schemaType: sessionStorage.connectionDetails.schemaType } : {})
     };
     
     console.log('[SIMPLE-HTTP] Using session connection details for query:', {
       projectId: sessionDetails.projectId,
       datasetId: sessionDetails.datasetId,
       tableId: sessionDetails.tableId,
+      schemaType: sessionDetails.schemaType || 'Not provided',
       hasPrivateKey: !!sessionDetails.privateKey
     });
     
@@ -41,7 +43,8 @@ function getCurrentConnectionDetails() {
       projectId: sessionStorage.connectionDetails.projectId,
       datasetId: sessionStorage.connectionDetails.datasetId,
       tableId: sessionStorage.connectionDetails.tableId,
-      privateKey: sessionStorage.connectionDetails.privateKey
+      privateKey: sessionStorage.connectionDetails.privateKey,
+      ...(sessionStorage.connectionDetails.schemaType ? { schemaType: sessionStorage.connectionDetails.schemaType } : {})
     };
   }
   
@@ -49,7 +52,8 @@ function getCurrentConnectionDetails() {
   const envDetails = {
     projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     datasetId: process.env.BIGQUERY_DATASET_ID,
-    tableId: process.env.BIGQUERY_TABLE_ID
+    tableId: process.env.BIGQUERY_TABLE_ID,
+    ...(process.env.SCHEMA_TYPE ? { schemaType: process.env.SCHEMA_TYPE } : {})
   };
   
   console.log('[SIMPLE-HTTP] Using environment variables for query:', envDetails);
@@ -469,7 +473,8 @@ app.post('/rpc', async (req, res) => {
             connectionDetails = {
               projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
               datasetId: process.env.BIGQUERY_DATASET_ID,
-              tableId: process.env.BIGQUERY_TABLE_ID
+              tableId: process.env.BIGQUERY_TABLE_ID,
+              ...(process.env.SCHEMA_TYPE ? { schemaType: process.env.SCHEMA_TYPE } : {})
             };
           }
         }
@@ -481,6 +486,7 @@ app.post('/rpc', async (req, res) => {
               projectId: connectionDetails.projectId,
               datasetId: connectionDetails.datasetId,
               tableId: connectionDetails.tableId,
+              schemaType: connectionDetails.schemaType || 'Not provided',
               hasPrivateKey: !!connectionDetails.privateKey
             }));
         }
@@ -493,7 +499,8 @@ app.post('/rpc', async (req, res) => {
             connectionDetails: isConnected ? {
               projectId: connectionDetails.projectId,
               datasetId: connectionDetails.datasetId,
-              tableId: connectionDetails.tableId
+              tableId: connectionDetails.tableId,
+              ...(connectionDetails.schemaType ? { schemaType: connectionDetails.schemaType } : {})
             } : null
           },
           id
@@ -523,9 +530,9 @@ app.post('/rpc', async (req, res) => {
         console.log('[SIMPLE-HTTP] Processing connectdatasource/update-session request');
         
         try {
-          const { projectId, datasetId, tableId, dataSourceId } = params;
+          const { projectId, datasetId, tableId, dataSourceId, schemaType } = params;
           
-          console.log('[SIMPLE-HTTP] Received connection details:', { projectId, datasetId, tableId, dataSourceId });
+          console.log('[SIMPLE-HTTP] Received connection details:', { projectId, datasetId, tableId, dataSourceId, schemaType });
           
           // Validate required fields
           if (!projectId || !datasetId || !tableId) {
@@ -544,7 +551,8 @@ app.post('/rpc', async (req, res) => {
           sessionStorage.connectionDetails = {
             projectId,
             datasetId,
-            tableId
+            tableId,
+            ...(schemaType ? { schemaType } : {})
           };
           
           sessionStorage.isConnected = true;
@@ -558,7 +566,8 @@ app.post('/rpc', async (req, res) => {
           console.log('[SIMPLE-HTTP] Connection details stored in session:', {
             projectId,
             datasetId,
-            tableId
+            tableId,
+            schemaType: schemaType || 'Not provided'
           });
           
           return res.json({
