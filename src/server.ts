@@ -17,6 +17,7 @@ import { ValidateConnectionRequest, ValidateConnectionResponse } from './types/s
 import { SchemaManager } from './services/schema-manager.js';
 import { LLMQueryTranslator } from './services/llm-query-translator.js';
 import { ConnectionManager } from './services/connection-manager.js';
+import { SchemaTypeRegistry } from './services/schema-type-registry.js';
 // Import the TranslationResult interface directly to ensure we have the latest version
 import type { TranslationResult } from './services/llm-query-translator.js';
 import { QueryConfirmationFormatter } from './services/query-confirmation-formatter.js';
@@ -46,6 +47,7 @@ declare module 'express-session' {
       projectId: string;
       datasetId: string;
       tableId: string;
+      schemaType?: string;
     };
     isAdmin?: boolean;
   }
@@ -395,6 +397,7 @@ export class ReportingMCPServer {
   private bigQueryClient: BigQueryClient | null = null;
   private queryParser: QueryParser | null = null;
   private reportRegistry: ReportRegistry | null = null;
+  private schemaTypeRegistry: SchemaTypeRegistry | null = null;
   private httpServer: http.Server | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private sessionMaxAgeMs: number = 30 * 60 * 1000; // 30 minutes default
@@ -478,6 +481,9 @@ export class ReportingMCPServer {
           
           // Initialize ReportRegistry
           this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+          
+          // Initialize SchemaTypeRegistry
+          this.schemaTypeRegistry = new SchemaTypeRegistry();
         }
         
         // No need to create Anthropic instance here, it's created inside LLMQueryTranslator
@@ -529,6 +535,9 @@ export class ReportingMCPServer {
 
       // Initialize ReportRegistry
       this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+      
+      // Initialize SchemaTypeRegistry
+      this.schemaTypeRegistry = new SchemaTypeRegistry();
       
       // Re-initialize LLMQueryTranslator with ReportRegistry if needed
       if (this.llmQueryTranslator && this.config.anthropicApiKey) {
@@ -1115,6 +1124,137 @@ export class ReportingMCPServer {
               }
               break;
               
+            case 'schema/list-types':
+              console.log('[RPC] Processing schema/list-types request');
+              
+              try {
+                if (!this.schemaTypeRegistry) {
+                  this.schemaTypeRegistry = new SchemaTypeRegistry();
+                }
+                
+                // Get all schema types
+                const schemaTypes = this.schemaTypeRegistry.getAllSchemaTypes();
+                
+                // Get current schema type from session if available
+                const connectionManager = ConnectionManager.getInstance();
+                const connectionDetails = connectionManager.getSessionConnectionDetails();
+                const currentSchemaType = connectionDetails?.schemaType;
+                
+                // Log the request and response
+                logFlow('SERVER', 'INFO', 'Listing schema types', {
+                  totalSchemaTypes: schemaTypes.length,
+                  currentSchemaType: currentSchemaType || 'not specified'
+                });
+                
+                // Return schema types with minimal information
+                const schemaTypeResponse = schemaTypes.map(schemaType => ({
+                  id: schemaType.id,
+                  name: schemaType.name,
+                  description: schemaType.description,
+                  compatibleReports: schemaType.compatibleReports,
+                  minimumRequiredColumns: schemaType.minimumRequiredColumns,
+                  otherIncludedColumns: schemaType.otherIncludedColumns,
+                  isCurrent: schemaType.id === currentSchemaType
+                }));
+                
+                return res.json({
+                  jsonrpc: '2.0',
+                  result: {
+                    success: true,
+                    schemaTypes: schemaTypeResponse,
+                    currentSchemaType
+                  },
+                  id
+                });
+              } catch (error) {
+                console.error('[RPC] Error listing schema types:', error);
+                return res.status(500).json({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : 'Error listing schema types',
+                    data: error instanceof Error ? error.stack : undefined
+                  },
+                  id
+                });
+              }
+              break;
+              
+            case 'schema/detect-type':
+              console.log('[RPC] Processing schema/detect-type request');
+              
+              try {
+                const { columns } = params as { columns: string[] };
+                
+                if (!columns || !Array.isArray(columns) || columns.length === 0) {
+                  return res.status(400).json({
+                    jsonrpc: '2.0',
+                    error: {
+                      code: -32602,
+                      message: 'Missing or invalid columns parameter'
+                    },
+                    id
+                  });
+                }
+                
+                if (!this.schemaTypeRegistry) {
+                  this.schemaTypeRegistry = new SchemaTypeRegistry();
+                }
+                
+                // Detect schema type from columns
+                const detectedSchema = this.schemaTypeRegistry.detectSchemaTypeFromColumns(columns);
+                
+                // Log the request and response
+                logFlow('SERVER', 'INFO', 'Detecting schema type from columns', {
+                  columnsProvided: columns.length,
+                  detectedSchema: detectedSchema ? detectedSchema.schemaTypeId : 'none',
+                  matchScore: detectedSchema ? detectedSchema.matchScore : 0
+                });
+                
+                if (detectedSchema) {
+                  const schemaType = this.schemaTypeRegistry.getSchemaTypeById(detectedSchema.schemaTypeId);
+                  
+                  return res.json({
+                    jsonrpc: '2.0',
+                    result: {
+                      success: true,
+                      detected: true,
+                      schemaType: {
+                        id: schemaType?.id,
+                        name: schemaType?.name,
+                        description: schemaType?.description,
+                        matchScore: detectedSchema.matchScore,
+                        minimumRequiredColumns: schemaType?.minimumRequiredColumns,
+                        otherIncludedColumns: schemaType?.otherIncludedColumns
+                      }
+                    },
+                    id
+                  });
+                } else {
+                  return res.json({
+                    jsonrpc: '2.0',
+                    result: {
+                      success: true,
+                      detected: false,
+                      message: 'No matching schema type found for the provided columns'
+                    },
+                    id
+                  });
+                }
+              } catch (error) {
+                console.error('[RPC] Error detecting schema type:', error);
+                return res.status(500).json({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : 'Error detecting schema type',
+                    data: error instanceof Error ? error.stack : undefined
+                  },
+                  id
+                });
+              }
+              break;
+              
             default:
               console.log(`[RPC] Method not found: ${method}`);
               return res.status(400).json({
@@ -1466,15 +1606,48 @@ export class ReportingMCPServer {
       };
     }
     
-    const reports = this.reportRegistry.getAllReports();
+    // Get current schema type from session if available
+    const connectionManager = ConnectionManager.getInstance();
+    const connectionDetails = connectionManager.getSessionConnectionDetails();
+    const schemaType = connectionDetails?.schemaType;
     
-    if (reports.length === 0) {
+    // Get all reports
+    const allReports = this.reportRegistry.getAllReports();
+    
+    // Split reports into schema-compatible and non-schema-compatible
+    let schemaCompatibleReports: any[] = [];
+    let nonSchemaReports: any[] = [];
+    
+    if (schemaType) {
+      // Filter reports by schema type
+      schemaCompatibleReports = this.reportRegistry.getReportsForSchemaType(schemaType);
+      
+      // Get reports that are not compatible with the current schema type
+      nonSchemaReports = allReports.filter(report => 
+        report.compatibleSchemaTypes && 
+        !report.compatibleSchemaTypes.includes(schemaType)
+      );
+    } else {
+      // If no schema type is specified, all reports are considered compatible
+      schemaCompatibleReports = allReports;
+    }
+    
+    // Log the schema type and filtered reports
+    logFlow('SERVER', 'INFO', 'Listing available reports', {
+      schemaType: schemaType || 'not specified',
+      totalReports: allReports.length,
+      schemaCompatibleReports: schemaCompatibleReports.length,
+      nonSchemaReports: nonSchemaReports.length
+    });
+    
+    if (schemaCompatibleReports.length === 0 && nonSchemaReports.length === 0) {
       return {
         content: [{ type: 'text', text: 'No reports are currently available.' }]
       };
     }
     
-    const reportItems = reports.map(report => {
+    // Function to format a report as markdown
+    const formatReport = (report: any) => {
       // Create example prompts for each report type with proper command format
       let examplePrompt = '';
       
@@ -1498,14 +1671,37 @@ export class ReportingMCPServer {
              `**Run with:** \`/${report.id}\` or \`/run ${report.name}\`\n\n` +
              `**Example Prompt:** "${examplePrompt}"\n\n` +
              `**Run:** <a href="#" class="run-example" data-command="${examplePrompt}">Click <span class="run-example-here">here</span></a>\n`;
-    }).join('\n---\n\n');
+    };
     
-    const content = [
-      { 
-        type: 'text', 
-        text: '# Available Reports\n\n' + reportItems
+    // Format schema-compatible reports
+    const schemaReportItems = schemaCompatibleReports.map(formatReport).join('\n---\n\n');
+    
+    // Format non-schema reports
+    const nonSchemaReportItems = nonSchemaReports.map(formatReport).join('\n---\n\n');
+    
+    // Build the content with schema-compatible reports and a collapsible section for non-schema reports
+    let reportContent = '# Available Reports\n\n';
+    
+    // Add schema type information if available
+    if (schemaType) {
+      const schemaTypeInfo = this.schemaTypeRegistry?.getSchemaTypeById(schemaType);
+      if (schemaTypeInfo) {
+        reportContent += `## Reports for Schema Type: ${schemaTypeInfo.name}\n\n`;
       }
-    ];
+    }
+    
+    // Add schema-compatible reports
+    reportContent += schemaReportItems;
+    
+    // Add non-schema reports in a collapsible section if there are any
+    if (nonSchemaReports.length > 0) {
+      reportContent += '\n\n---\n\n';
+      reportContent += `<details>\n<summary>Show Non-Schema Reports (${nonSchemaReports.length})</summary>\n\n`;
+      reportContent += nonSchemaReportItems;
+      reportContent += '\n</details>\n';
+    }
+    
+    const content = [{ type: 'text', text: reportContent }];
     
     return { content };
   }
@@ -1545,6 +1741,7 @@ export class ReportingMCPServer {
           });
         }
         this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+        this.schemaTypeRegistry = new SchemaTypeRegistry();
       }
       
       // Create a synthetic translation result
@@ -1778,10 +1975,25 @@ export class ReportingMCPServer {
           });
         }
         this.reportRegistry = new ReportRegistry(this.bigQueryClient);
+        this.schemaTypeRegistry = new SchemaTypeRegistry();
       }
       
-      // Get all available reports from registry to provide context to the LLM
-      const availableReports = this.reportRegistry.getAllReports();
+      // Get current schema type from session if available
+      const connectionManager = ConnectionManager.getInstance();
+      const connectionDetails = connectionManager.getSessionConnectionDetails();
+      const schemaType = connectionDetails?.schemaType;
+      
+      // Get reports filtered by schema type if available
+      const availableReports = schemaType ? 
+        this.reportRegistry.getReportsForSchemaType(schemaType) : 
+        this.reportRegistry.getAllReports();
+      
+      // Log the schema type and filtered reports
+      logFlow('SERVER', 'INFO', 'Filtering reports for LLM context by schema type', {
+        schemaType: schemaType || 'not specified',
+        totalReports: this.reportRegistry.getAllReports().length,
+        filteredReports: availableReports.length
+      });
       
       // Create context for the LLM with report information and required parameters
       const reportContext = availableReports.map(report => ({
