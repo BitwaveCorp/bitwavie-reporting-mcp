@@ -1620,13 +1620,18 @@ export class ReportingMCPServer {
     
     if (schemaType) {
       // Filter reports by schema type
-      schemaCompatibleReports = this.reportRegistry.getReportsForSchemaType(schemaType);
+      // Use getAllReports and filter manually instead of getReportsForSchemaType
+      schemaCompatibleReports = this.reportRegistry.getAllReports().filter(report => {
+        // Include reports that don't specify compatibility (assumed compatible with all)
+        const compatibleTypes = (report as any).compatibleSchemaTypes;
+        return !compatibleTypes || compatibleTypes.includes(schemaType);
+      });
       
       // Get reports that are not compatible with the current schema type
-      nonSchemaReports = allReports.filter(report => 
-        report.compatibleSchemaTypes && 
-        !report.compatibleSchemaTypes.includes(schemaType)
-      );
+      nonSchemaReports = allReports.filter(report => {
+        const compatibleTypes = (report as any).compatibleSchemaTypes;
+        return compatibleTypes && !compatibleTypes.includes(schemaType);
+      });
     } else {
       // If no schema type is specified, all reports are considered compatible
       schemaCompatibleReports = allReports;
@@ -1984,9 +1989,14 @@ export class ReportingMCPServer {
       const schemaType = connectionDetails?.schemaType;
       
       // Get reports filtered by schema type if available
+      const allReports = this.reportRegistry.getAllReports();
       const availableReports = schemaType ? 
-        this.reportRegistry.getReportsForSchemaType(schemaType) : 
-        this.reportRegistry.getAllReports();
+        allReports.filter(report => {
+          // Include reports that don't specify compatibility (assumed compatible with all)
+          const compatibleTypes = (report as any).compatibleSchemaTypes;
+          return !compatibleTypes || compatibleTypes.includes(schemaType);
+        }) : 
+        allReports;
       
       // Log the schema type and filtered reports
       logFlow('SERVER', 'INFO', 'Filtering reports for LLM context by schema type', {
