@@ -143,8 +143,8 @@ export class QueryExecutor {
             );
             
             // If we got a corrected SQL, try that
-            if (correction.correctedSQL) {
-              currentSql = correction.correctedSQL;
+            if (correction.sql) {
+              currentSql = correction.sql;
               retryCount++;
               
               // Validate the corrected SQL
