@@ -9,8 +9,9 @@ This guide provides a step-by-step process for creating a new report in the Bitw
 3. [Create the Report Generator Class](#3-create-the-report-generator-class)
 4. [Register the Report](#4-register-the-report)
 5. [Update Schema Type Registry](#5-update-schema-type-registry)
-6. [Testing](#6-testing)
-7. [Troubleshooting](#7-troubleshooting)
+6. [Add Example Prompt to Server](#6-add-example-prompt-to-server)
+7. [Testing](#7-testing)
+8. [Troubleshooting](#8-troubleshooting)
 
 ## 1. Understand the Schema
 
@@ -229,7 +230,7 @@ export class MyReportGenerator {
    return {
      data: results,
      columns,
-     executionTimeMs: executionTime,  // IMPORTANT: Use executionTimeMs, not executionTime
+     executionTime,  // IMPORTANT: Use executionTime, not executionTimeMs
      bytesProcessed: executionResult.metadata.bytesProcessed || 0,
      sql,
      metadata: {
@@ -301,7 +302,35 @@ this.registerSchemaType('schema_name', {
 });
 ```
 
-## 6. Testing
+## 6. Add Example Prompt to Server
+
+Add an example prompt for your report in the server.ts file to help users understand how to use it:
+
+- **File to modify**: `src/server.ts`
+- **Function to update**: `formatReport` in the `listAvailableReports` method
+- **What to add**: Add a case for your report ID with an example prompt that includes all required parameters
+
+Example:
+```typescript
+// In the formatReport function's switch statement
+switch(report.id) {
+  case 'inventory-balance':
+    examplePrompt = '/inventory-balance asOfDate=2025-06-15';
+    break;
+  case 'valuation-rollforward':
+    examplePrompt = '/valuation-rollforward startDate=2025-01-01 endDate=2025-03-31';
+    break;
+  case 'my-report-id':
+    examplePrompt = '/my-report-id param1=value1 param2=value2 param3=value3';
+    break;
+  default:
+    examplePrompt = `/${report.id}`;
+}
+```
+
+This example prompt will be displayed in the UI when users list available reports, helping them understand how to use your report with the correct parameters.
+
+## 7. Testing
 
 Test your report thoroughly:
 
@@ -323,12 +352,12 @@ Test your report thoroughly:
 
 6. **Verify download functionality** works correctly
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 Common issues and solutions:
 
 ### Download Button Not Appearing
-- Ensure your `generateReport` method returns `executionTimeMs` (not `executionTime`)
+- Ensure your `generateReport` method returns `executionTime` (not `executionTimeMs`)
 - Check that the report is returning valid data
 
 ### Report Not Appearing in UI
@@ -355,6 +384,7 @@ Here's a complete workflow for creating a new report:
 3. **Create the report generator** in `src/reports/{report-name}.ts`
 4. **Register the report** in `src/services/report-registry.ts`
 5. **Update the schema type registry** in `src/services/schema-type-registry.ts`
-6. **Build and test** the report
+6. **Add example prompt** in `src/server.ts`
+7. **Build and test** the report
 
 Following these steps will ensure your report is properly integrated with all components of the Bitwavie reporting system.

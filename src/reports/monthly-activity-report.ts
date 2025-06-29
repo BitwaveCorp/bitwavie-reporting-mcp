@@ -265,7 +265,7 @@ export class MonthlyActivityReportGenerator {
   async generateReport(parameters: Record<string, any>): Promise<{
     data: any[];
     columns: string[];
-    executionTimeMs: number;
+    executionTime: number;
     bytesProcessed: number;
     sql: string;
     metadata?: any;
@@ -372,7 +372,7 @@ export class MonthlyActivityReportGenerator {
       return {
         data: results,
         columns,
-        executionTimeMs: executionTime,
+        executionTime,
         bytesProcessed: executionResult.metadata.bytesProcessed || 0,
         sql,
         metadata: {
