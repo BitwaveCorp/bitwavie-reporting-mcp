@@ -449,10 +449,19 @@ export class ReportingMCPServer {
         source: 'environment' // At initialization time, we only have environment variables
       });
       
+      // Get schemaType from connection manager (reuse the existing connectionManager)
+      const schemaType = connectionManager.getSchemaType();
+      
+      console.log('SCHEMA_MANAGER 1: Schema type from environment:', { 
+        schemaType, 
+        source: schemaType ? 'environment' : 'none'
+      });
+      
       await this.schemaManager.configure({
         projectId,
         datasetId,
         tableId,
+        ...(schemaType ? { schemaType } : {}), // Only include if defined
         refreshIntervalMs: this.config.schemaRefreshIntervalMs || 3600000 // Ensure it's always a number
       });
 

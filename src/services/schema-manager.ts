@@ -176,6 +176,15 @@ export class SchemaManager {
   public async configure(config: SchemaConfig, sessionDetails?: any): Promise<void> {
     this.config = config;
     
+    // Log schema type information
+    console.log('SCHEMA_MANAGER 2: Received schema config:', { 
+      projectId: config.projectId,
+      datasetId: config.datasetId,
+      tableId: config.tableId,
+      schemaType: config.schemaType || 'not provided',
+      hasSchemaType: !!config.schemaType
+    });
+    
     // Set custom refresh interval if provided
     if (config.refreshIntervalMs) {
       this.refreshIntervalMs = config.refreshIntervalMs;
@@ -344,6 +353,13 @@ export class SchemaManager {
     // Check if we have a known schema type
     const schemaType = this.config?.schemaType ? 
       this.schemaTypeRegistry.getSchemaTypeById(this.config.schemaType) : null;
+    
+    console.log('SCHEMA_MANAGER 3: Schema type for LLM:', { 
+      configSchemaType: this.config?.schemaType || 'not provided',
+      foundRegisteredType: !!schemaType,
+      schemaTypeId: schemaType?.id || 'none',
+      schemaTypeName: schemaType?.name || 'none'
+    });
     
     if (schemaType) {
       console.log(`SCHEMA_CHOICE2: Using known schema type: ${schemaType.id}`);
