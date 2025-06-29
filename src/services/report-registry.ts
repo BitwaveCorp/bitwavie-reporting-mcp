@@ -12,6 +12,7 @@ import { logFlow } from '../utils/logging.js';
 import { InventoryBalanceGenerator } from '../reports/inventory-balance.js';
 import { ValuationRollforwardGenerator } from '../reports/valuation-rollforward.js';
 import { LotsReportGenerator } from '../reports/lots-report.js';
+import { MonthlyActivityReportGenerator } from '../reports/monthly-activity-report.js';
 
 /**
  * Parameter metadata for a report
@@ -159,6 +160,48 @@ export class ReportRegistry {
         }
       ]
     }, LotsReportGenerator);
+    
+    // Register Monthly Activity Report
+    this.registerReport({
+      id: 'monthly-activity-report',
+      name: 'Total Activity Report - By Month and Type',
+      description: 'Summarizes transaction activity by month and type, showing counts and amounts for canton transactions',
+      keywords: ['activity', 'monthly', 'transactions', 'summary', 'canton', 'wallet', 'operations'],
+      compatibleSchemaTypes: ['canton_transaction'],
+      parameters: [
+        {
+          name: 'walletId',
+          description: 'The wallet ID to generate the report for',
+          type: 'string',
+          required: true
+        },
+        {
+          name: 'startDate',
+          description: 'Start date for the activity period',
+          type: 'date',
+          required: true
+        },
+        {
+          name: 'endDate',
+          description: 'End date for the activity period',
+          type: 'date',
+          required: true,
+          defaultValue: 'CURRENT_DATE()'
+        },
+        {
+          name: 'assets',
+          description: 'Specific assets to include (comma-separated)',
+          type: 'string',
+          required: false
+        },
+        {
+          name: 'operations',
+          description: 'Specific operation types to include (comma-separated)',
+          type: 'string',
+          required: false
+        }
+      ]
+    }, MonthlyActivityReportGenerator);
   }
   
   /**
