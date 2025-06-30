@@ -17,6 +17,7 @@ import { ValidateConnectionRequest, ValidateConnectionResponse } from './types/s
 import { SchemaManager } from './services/schema-manager.js';
 import { LLMQueryTranslator } from './services/llm-query-translator.js';
 import { QueryContextManager } from './services/query-context-manager.js';
+import { SchemaContextManager } from './services/schema-context-manager.js';
 import { ConnectionManager } from './services/connection-manager.js';
 import { SchemaTypeRegistry } from './services/schema-type-registry.js';
 // Import the TranslationResult interface directly to ensure we have the latest version
@@ -396,6 +397,7 @@ export class ReportingMCPServer {
   private schemaManager: SchemaManager | null = null;
   private llmQueryTranslator: LLMQueryTranslator | null = null;
   private queryContextManager: QueryContextManager | null = null;
+  private schemaContextManager: SchemaContextManager | null = null;
   private queryConfirmationFormatter: QueryConfirmationFormatter | null = null;
   private queryExecutor: QueryExecutor | null = null;
   private resultFormatter: ResultFormatter | null = null;
@@ -510,8 +512,11 @@ export class ReportingMCPServer {
         );
       }
 
-      // Initialize QueryContextManager
+      // Initialize QueryContextManager for enhanced error correction
       this.queryContextManager = new QueryContextManager();
+      
+      // Initialize SchemaContextManager for schema type propagation in analyze mode
+      this.schemaContextManager = SchemaContextManager.getInstance();
 
       // Initialize QueryConfirmationFormatter
       this.queryConfirmationFormatter = new QueryConfirmationFormatter({
@@ -842,6 +847,10 @@ export class ReportingMCPServer {
               
             case 'analyze_actions_data':
               console.log('[RPC] Processing analyze_actions_data request');
+              
+              // Extract schemaType from the request if available
+              const schemaType = params[0]?.connectionDetails?.schemaType || 'actions';
+              console.log('[RPC] analyze_actions_data schemaType:', schemaType);
               if (!params || !Array.isArray(params) || params.length === 0) {
                 console.log('[RPC] Invalid params for analyze_actions_data:', params);
                 return res.status(400).json({
@@ -856,6 +865,28 @@ export class ReportingMCPServer {
               
               try {
                 console.log('[RPC] Calling handleAnalyzeData with query:', requestData.query);
+                
+                // Create schema context if SchemaContextManager is available
+                let schemaContextId;
+                if (this.schemaContextManager && schemaType) {
+                  schemaContextId = this.schemaContextManager.createContext(
+                    schemaType,
+                    requestData.connectionDetails?.projectId,
+                    requestData.connectionDetails?.datasetId,
+                    requestData.connectionDetails?.tableId
+                  );
+                  console.log('[RPC] Created schema context for analyze_actions_data:', {
+                    schemaContextId,
+                    schemaType
+                  });
+                  
+                  // Embed the schema context ID in the query
+                  if (requestData.query && schemaContextId) {
+                    requestData.query = this.schemaContextManager.embedContextId(requestData.query, schemaContextId);
+                    console.log('[RPC] Embedded schema context ID in query');
+                  }
+                }
+                
                 const analyzeResult = await this.handleAnalyzeData({
                   query: requestData.query,
                   confirmedMappings: requestData.confirmedMappings,
@@ -1435,13 +1466,31 @@ export class ReportingMCPServer {
       projectId: req.session.connectionDetails.projectId,
       datasetId: req.session.connectionDetails.datasetId,
       tableId: req.session.connectionDetails.tableId,
-      hasPrivateKey: !!(req.session as any).privateKey
+      hasPrivateKey: !!(req.session as any).privateKey,
+      schemaType: req.session.connectionDetails.schemaType
     } : {
       projectId: this.config.projectId,
       datasetId: this.config.datasetId,
       tableId: this.config.tableId,
       hasPrivateKey: false
     };
+    
+    // Check for schema context ID in the query if SchemaContextManager is available
+    if (this.schemaContextManager && request.query) {
+      const contextId = this.schemaContextManager.extractContextId(request.query);
+      if (contextId) {
+        const schemaContext = this.schemaContextManager.getContext(contextId);
+        if (schemaContext) {
+          logFlow('SERVER', 'INFO', 'Retrieved schema context in handleAnalyzeData', {
+            contextId,
+            schemaType: schemaContext.schemaType
+          });
+          
+          // Override schemaType in connection details with the one from schema context
+          connectionDetails.schemaType = schemaContext.schemaType;
+        }
+      }
+    }
     
     logFlow('WALKTHROUGH_SHOWTABLE2', 'INFO', 'handleAnalyzeData: SHOW TABLE', {
       ...connectionDetails,

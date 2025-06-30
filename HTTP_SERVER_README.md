@@ -2,16 +2,49 @@
 
 This is a JSON-RPC over HTTP server implementation for the Bitwave MCP (Reporting MCP Server). It provides an HTTP interface to the MCP server's functionality, allowing for easier testing and integration with HTTP clients.
 
+## Architecture Overview
+
+The simple-http-server.js is a lightweight wrapper around the main Reporting MCP Server. It imports the compiled `ReportingMCPServer` class from './dist/server.js' and delegates most of its functionality to this class. This means:
+
+1. It doesn't reimplement core logic like query execution, error handling, or data processing
+2. When the main server code is updated and compiled, the HTTP server automatically benefits from those changes
+3. It provides a simplified JSON-RPC interface to the more complex functionality in the main server
+4. It maintains its own session storage for connection details, which is used by the main server through a global function
+
 ## Features
 
 - Full JSON-RPC 2.0 support
-- Supports all MCP server methods:
-  - `test_connection`: Test the connection to the MCP server
-  - `tools/list` or `list_tools`: List available tools
-  - `tools/call`: Call a specific tool (currently supports `analyze_actions_data`)
-  - `analyze_actions_data`: Direct method to analyze crypto transaction data
+- Implements a subset of the main server's functionality through these methods:
+  - `test_connection`: Tests the connection to the MCP server and underlying data sources
+  - `tools/list` or `list_tools`: Lists available tools and capabilities
+  - `tools/call`: Generic method to call specific tools (currently supports `analyze_actions_data`)
+  - `analyze_actions_data`: Direct method to analyze crypto transaction data using the LLM query translator
+  - `connection/validate-table-access`: Validates access to BigQuery tables
+  - `connection/status`: Returns the current connection status
+  - `connectdatasource/update-session`: Updates the connection session with new details
+  - `connection/session-details`: Returns the current session connection details
+- Session management for connection details with environment variable fallbacks
+- Enhanced error handling with LLM-powered explanations for SQL errors
 - Comprehensive logging for debugging and monitoring
 - Graceful error handling and shutdown
+
+## Enhanced Error Handling
+
+The HTTP server benefits from the main server's enhanced LLM-powered SQL error handling mechanism. When a SQL query fails, the system:
+
+1. Captures the original error from BigQuery
+2. Sends the error, original SQL, user query, and context to the LLM (Claude)
+3. Receives back:
+   - A user-friendly explanation of what went wrong
+   - Alternative query suggestions the user could try
+   - A corrected SQL query when possible
+4. Attempts to execute the corrected SQL
+5. Returns enhanced error information to the client, including:
+   - The original error message
+   - A natural language explanation of the error
+   - Alternative query suggestions
+
+This provides a much better user experience when errors occur, helping users understand what went wrong and how to fix it without requiring SQL expertise.
 
 ## Usage
 

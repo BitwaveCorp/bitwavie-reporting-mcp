@@ -381,33 +381,33 @@ export class SchemaTypeRegistry {
         'feeAsset': 'Asset used to pay the transaction fee',
         'categorizationStatus': 'Status of transaction categorization (e.g., categorized, uncategorized)',
         'reconciliationStatus': 'Status of transaction reconciliation (e.g., reconciled, unreconciled)',
-        'contactId': 'Identifier for the counterparty or contact involved in the transaction',
-        'categoryId': 'Identifier for the transaction category',
-        'description': 'Human-readable description of the transaction',
+        'contactId': 'An accounting Identifier for the counterparty or contact involved in the transaction',
+        'categoryId': 'An accounting Identifier for the General Ledger Account (99% of time) although it can also just be a label.',
+        'description': 'Human-readable description of the transaction', 
         'fromAddress': 'Blockchain address where the transaction originated',
         'toAddress': 'Blockchain address where the transaction was sent',
-        'type': 'General transaction type classification',
+        'type': 'General transaction type classification. Typical types are : deposit, withdrawal, buy, sell, trade, transfer',
         'combinedParentTxnId': 'Cross-system identifier that can link related transactions',
-        'transactionType': 'Detailed classification of the transaction type',
-        'feeType': 'Type of fee associated with the transaction',
-        'rewardFeeType': 'Type of fee associated with reward transactions',
-        'rewardType': 'Type of reward (e.g., staking, mining, interest)',
-        'eventId': 'Identifier for the blockchain event associated with the transaction',
-        'rootTxn': 'Identifier for the root transaction in a chain of related transactions'
+        'transactionType': 'Canton Network specific Detailed classification of the transaction type',
+        'feeType': 'Canton Network specific Type of fee associated with the transaction',
+        'rewardFeeType': 'Canton Network specific Type of fee associated with reward transactions',
+        'rewardType': 'Canton Network specific Type of reward (e.g., staking, mining, interest)',
+        'eventId': 'Canton Network specific Identifier for the blockchain event associated with the transaction',
+        'rootTxn': 'Canton Network specific Identifier for the root transaction in a chain of related transactions'
       },
       
       columnCategories: {
         'Time': ['dateTime', 'dateTimeSEC'],
         'Asset': ['assetTicker', 'assetbitwaveId'],
-        'Transaction': ['parenttransactionId', 'linetransactionId', 'operation', 'combinedParentTxnId', 'transactionType', 'type', 'rootTxn', 'eventId'],
+        'Transaction': ['parenttransactionId', 'linetransactionId', 'operation', 'combinedParentTxnId', 'transactionType', 'type', 'rootTxn', 'eventId','rewardType'],
         'Wallet': ['walletId', 'walletName', 'fromAddress', 'toAddress'],
         'Quantity': ['assetAmount'],
         'Valuation': ['assetvalueInBaseCurrency'],
         'Pricing': ['exchangeRate', 'exchangeRateSource'],
         'Status': ['categorizationStatus', 'reconciliationStatus'],
         'Fee': ['feeAmount', 'feeAsset', 'feeType', 'rewardFeeType'],
-        'Metadata': ['description', 'contactId', 'categoryId'],
-        'Blockchain': [ 'rewardType']
+        'Accounting': ['contactId', 'categoryId'],
+        'Description':['description']
       },
       
       exampleQueries: [
@@ -419,7 +419,7 @@ export class SchemaTypeRegistry {
         {
           description: 'Asset inflows and outflows',
           query: 'What are the total inflows and outflows of Bitcoin by month?',
-          sql: 'SELECT DATE_TRUNC(dateTime, MONTH) as month, SUM(CASE WHEN assetAmount > 0 THEN assetAmount ELSE 0 END) as inflow, SUM(CASE WHEN assetAmount < 0 THEN ABS(assetAmount) ELSE 0 END) as outflow FROM canton_transactions WHERE assetTicker = "BTC" GROUP BY month ORDER BY month'
+          sql: 'SELECT DATE_TRUNC(dateTime, MONTH) as month, SUM(CASE WHEN lower(operation) = "deposit" THEN assetAmount ELSE 0 END) as inflow, SUM(CASE WHEN lower(operation) = "withdrawal" THEN ABS(assetAmount) ELSE 0 END) as outflow FROM canton_transactions WHERE assetTicker = "BTC" GROUP BY month ORDER BY month'
         },
         {
           description: 'Fee analysis',
@@ -464,8 +464,8 @@ export class SchemaTypeRegistry {
           description: 'The fee paid to process the transaction'
         },
         {
-          domainConcept: 'cryptocurrency',
-          columnNames: ['assetTicker', 'assetbitwaveId'],
+          domainConcept: 'asset',
+          columnNames: ['assetTicker'],
           aliases: ['coin', 'token', 'asset', 'crypto'],
           description: 'The cryptocurrency involved in the transaction'
         },

@@ -10,6 +10,7 @@ import { BigQuery, Dataset, Table } from '@google-cloud/bigquery';
 import { logFlow } from '../utils/logging.js';
 import { ConnectionManager } from './connection-manager.js';
 import { SchemaTypeRegistry, SchemaTypeDefinition } from './schema-type-registry.js';
+import { SchemaContextManager } from './schema-context-manager.js';
 
 // Types
 export interface SchemaConfig {
@@ -49,6 +50,7 @@ export class SchemaManager {
   private table: Table | null = null;
   private config: SchemaConfig | null = null;
   private schemaTypeRegistry: SchemaTypeRegistry;
+  private schemaContextManager: SchemaContextManager | null = null;
   
   private schema: TableSchema | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
@@ -166,6 +168,9 @@ export class SchemaManager {
   constructor() {
     // Initialize empty - configuration happens via configure()
     this.schemaTypeRegistry = new SchemaTypeRegistry();
+    
+    // Initialize schema context manager for schema type propagation in analyze mode
+    this.schemaContextManager = SchemaContextManager.getInstance();
   }
   
   /**
@@ -339,10 +344,52 @@ export class SchemaManager {
   }
   
   /**
+   * Extract schema context ID from SQL query if present
+   * @param sql SQL query that may contain a schema context ID
+   * @returns Schema context if found, undefined otherwise
+   * @private Used only in getSchemaForLLM to ensure schemaType propagation in analyze mode
+   */
+  private extractSchemaContextFromSQL(sql?: string): any {
+    if (!sql || !this.schemaContextManager) {
+      return undefined;
+    }
+    
+    const contextId = this.schemaContextManager.extractContextId(sql);
+    if (!contextId) {
+      return undefined;
+    }
+    
+    const context = this.schemaContextManager.getContext(contextId);
+    if (context) {
+      logFlow('SCHEMA_MANAGER', 'INFO', 'Found schema context in SQL', {
+        contextId,
+        schemaType: context.schemaType
+      });
+    }
+    
+    return context;
+  }
+
+  /**
    * Get schema information formatted for LLM prompts
+   * @param sql Optional SQL query that may contain a schema context ID
    * @returns Formatted schema information string
    */
-  public getSchemaForLLM(): string {
+  public getSchemaForLLM(sql?: string): string {
+    // Check for schema context in SQL - only for analyze mode
+    if (sql) {
+      const schemaContext = this.extractSchemaContextFromSQL(sql);
+      if (schemaContext && this.config) {
+        // If we found a schema context, temporarily use its schemaType for this call
+        const originalSchemaType = this.config.schemaType;
+        this.config.schemaType = schemaContext.schemaType;
+        
+        logFlow('SCHEMA_MANAGER', 'INFO', 'Using schema type from context for getSchemaForLLM', {
+          originalSchemaType: originalSchemaType || 'not provided',
+          contextSchemaType: schemaContext.schemaType
+        });
+      }
+    }
     if (!this.schema) {
       console.log('SCHEMA_CHOICE1: No schema available');
       return "No schema information available.";
