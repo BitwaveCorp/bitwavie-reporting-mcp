@@ -34,6 +34,7 @@ import { BigQuery } from '@google-cloud/bigquery';
 // Session data interface definition
 interface SessionData {
   query: string;
+  originalQuery?: string; // Original query with schema context ID
   translationResult?: TranslationResult;
   confirmationResponse?: ConfirmationResponse;
   executionResult?: ExecutionResult;
@@ -2439,26 +2440,6 @@ export class ReportingMCPServer {
   private async processEnhancedNLQ(sessionId: string, query: string, req?: express.Request): Promise<AnalyzeDataResponse> {
     console.log(`[processEnhancedNLQ] Processing enhanced NLQ for session ${sessionId}, query: ${query}`);
     
-    // Extract the actual query if it contains a schema context ID
-    let actualQuery = query;
-    const schemaContextMatch = query.match(/\/\* SCHEMA_CONTEXT_ID:([0-9a-f-]+) \*\/\s*(.*)/);
-    
-    if (schemaContextMatch) {
-      const contextId = schemaContextMatch[1];
-      const extractedQuery = schemaContextMatch[2];
-      
-      console.log(`[processEnhancedNLQ] Extracted schema context ID: ${contextId}`);
-      console.log(`[processEnhancedNLQ] Extracted query: "${extractedQuery}"`);
-      
-      // If we have an extracted query, use it instead of the full string
-      if (extractedQuery && extractedQuery.trim()) {
-        actualQuery = extractedQuery.trim();
-        console.log(`[processEnhancedNLQ] Using extracted query: "${actualQuery}"`);
-      } else {
-        console.log(`[processEnhancedNLQ] Warning: No query found after schema context ID`);
-      }
-    }
-    
     // Extract connection details from session or request if available
     let connectionDetails: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string } | undefined;
     
@@ -2499,10 +2480,9 @@ export class ReportingMCPServer {
     });
     
     try {
-      // Check if this is a slash command - use actualQuery to determine this
-      if (actualQuery.startsWith('/')) {
-        console.log(`[processEnhancedNLQ] Query starts with slash, routing to handleSlashCommand: "${actualQuery}"`);
-        return this.handleSlashCommand(sessionId, actualQuery, req);
+      // Check if this is a slash command
+      if (query.startsWith('/')) {
+        return this.handleSlashCommand(sessionId, query, req);
       }
       
       // Translate the query using LLM
@@ -2596,16 +2576,14 @@ export class ReportingMCPServer {
       });
       
       // Step 1: Translate the query to SQL
-      console.log(`[processEnhancedNLQ] Translating query: "${actualQuery}" (original with context: "${query}")`);
-      const translationResult = await this.llmQueryTranslator.translateQuery(actualQuery, undefined, enhancedConnectionDetails);
+      const translationResult = await this.llmQueryTranslator.translateQuery(query, undefined, enhancedConnectionDetails);
       logFlow('SERVER', 'INFO', 'Translation result', { translationResult });
       
       // Store the translation result in the session data
       const sessionData = this.sessions.get(sessionId);
       if (sessionData) {
         sessionData.translationResult = translationResult;
-        sessionData.query = actualQuery; // Store the actual query without schema context ID
-        sessionData.originalQuery = query; // Also store the original query with schema context ID
+        sessionData.query = query; // Ensure the original query is stored
         this.sessions.set(sessionId, sessionData);
         
         logFlow('SERVER', 'INFO', 'Updated session with translation result', {
