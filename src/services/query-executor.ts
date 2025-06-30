@@ -51,7 +51,7 @@ export interface ConnectionDetails {
 
 export class QueryExecutor {
   private bigquery: BigQuery;
-  private llmTranslator: LLMQueryTranslator;
+  private llmTranslator: LLMQueryTranslator | null = null;
   private queryContextManager: QueryContextManager | null = null;
   private config: ExecutionConfig = {
     maxRetries: 2,
@@ -75,13 +75,8 @@ export class QueryExecutor {
       projectId
     });
     
-    // Set LLM translator if provided
-    if (llmTranslator) {
-      this.llmTranslator = llmTranslator;
-    } else {
-      // We should never reach here in practice as the translator should always be provided
-      throw new Error('LLMQueryTranslator is required');
-    }
+    // Set LLM translator if provided (for error correction)
+    this.llmTranslator = llmTranslator || null;
     this.queryContextManager = new QueryContextManager(); 
     
     // Apply custom config if provided
