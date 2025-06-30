@@ -1613,11 +1613,11 @@ export class ReportingMCPServer {
     logFlow('SERVER', 'INFO', `Processing slash command: ${commandText}`, { sessionId });
     
     // Handle special commands
-    if (commandText === '' || commandText === 'help') {
+    if (commandText === '' || commandText === 'help' || commandText.toLowerCase().startsWith('help /*')) {
       return this.listAvailableCommands(sessionId);
     }
     
-    if (commandText === 'reports') {
+    if (commandText === 'reports' || commandText.toLowerCase().startsWith('reports /*')) {
       return this.listAvailableReports(sessionId);
     }
     
