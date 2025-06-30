@@ -286,6 +286,21 @@ Only return valid JSON. Do not include any explanations or additional text outsi
     
     
     try {
+      // Configure the SchemaManager with the schema type if provided
+      if (connectionDetails?.schemaType) {
+        logFlow('LLM_TRANSLATOR', 'INFO', 'Configuring SchemaManager with schema type in translateQuery', {
+          schemaType: connectionDetails.schemaType
+        });
+        
+        // Configure the SchemaManager with the connection details including schema type
+        await this.schemaManager.configure({
+          projectId: connectionDetails.projectId || '',
+          datasetId: connectionDetails.datasetId || '',
+          tableId: connectionDetails.tableId || '',
+          schemaType: connectionDetails.schemaType
+        }, { session: { connectionDetails } });
+      }
+      
       // Step 0: Check if this is a report query
       const reportDetection = await this.detectReportQuery(query);
       
@@ -649,6 +664,22 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     
     // Get table information using ConnectionManager
     const connectionManager = ConnectionManager.getInstance();
+    
+    // Configure the SchemaManager with the schema type if provided
+    if (connectionDetails?.schemaType) {
+      logFlow('LLM_TRANSLATOR', 'INFO', 'Configuring SchemaManager with schema type', {
+        schemaType: connectionDetails.schemaType
+      });
+      
+      // Configure the SchemaManager with the connection details including schema type
+      await this.schemaManager.configure({
+        projectId: connectionDetails.projectId || '',
+        datasetId: connectionDetails.datasetId || '',
+        tableId: connectionDetails.tableId || '',
+        schemaType: connectionDetails.schemaType
+      }, { session: { connectionDetails } });
+    }
+    
     const columnName = this.schemaManager.getSchema()?.columns[0]?.name;
     
     // Ensure connectionDetails is properly initialized if provided
