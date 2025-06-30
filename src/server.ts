@@ -16,6 +16,7 @@ import { ValidateConnectionRequest, ValidateConnectionResponse } from './types/s
 // Import service modules 
 import { SchemaManager } from './services/schema-manager.js';
 import { LLMQueryTranslator } from './services/llm-query-translator.js';
+import { QueryContextManager } from './services/query-context-manager.js';
 import { ConnectionManager } from './services/connection-manager.js';
 import { SchemaTypeRegistry } from './services/schema-type-registry.js';
 // Import the TranslationResult interface directly to ensure we have the latest version
@@ -394,6 +395,7 @@ export class ReportingMCPServer {
   private sessions: Map<string, SessionData> = new Map();
   private schemaManager: SchemaManager | null = null;
   private llmQueryTranslator: LLMQueryTranslator | null = null;
+  private queryContextManager: QueryContextManager | null = null;
   private queryConfirmationFormatter: QueryConfirmationFormatter | null = null;
   private queryExecutor: QueryExecutor | null = null;
   private resultFormatter: ResultFormatter | null = null;
@@ -508,6 +510,9 @@ export class ReportingMCPServer {
         );
       }
 
+      // Initialize QueryContextManager
+      this.queryContextManager = new QueryContextManager();
+
       // Initialize QueryConfirmationFormatter
       this.queryConfirmationFormatter = new QueryConfirmationFormatter({
         includeSQL: this.config.includeSqlInResponses ?? false, // Ensure it's a boolean
@@ -516,9 +521,13 @@ export class ReportingMCPServer {
       });
 
       // Initialize QueryExecutor
+      if (!this.llmQueryTranslator) {
+        throw new Error('LLMQueryTranslator must be initialized before QueryExecutor');
+      }
+      
       this.queryExecutor = new QueryExecutor(
-        this.config.projectId,
-        this.llmQueryTranslator || undefined
+        this.config.projectId || '',
+        this.llmQueryTranslator
       );
 
       // Initialize ResultFormatter
@@ -2519,6 +2528,38 @@ export class ReportingMCPServer {
       // Step 1: Translate the query to SQL
       const translationResult = await this.llmQueryTranslator.translateQuery(query, undefined, enhancedConnectionDetails);
       logFlow('SERVER', 'INFO', 'Translation result', { translationResult });
+      
+      // Store the translation result in the session data
+      const sessionData = this.sessions.get(sessionId);
+      if (sessionData) {
+        sessionData.translationResult = translationResult;
+        sessionData.query = query; // Ensure the original query is stored
+        this.sessions.set(sessionId, sessionData);
+        
+        logFlow('SERVER', 'INFO', 'Updated session with translation result', {
+          sessionId,
+          hasPrompt: !!translationResult.prompt,
+          promptLength: translationResult.prompt?.length || 0
+        });
+        
+        // ENHANCEMENT: Create query context for more reliable error correction
+        if (this.queryContextManager && translationResult.sql) {
+          const contextId = this.queryContextManager.createContext(
+            translationResult.sql,
+            translationResult.prompt,
+            query,
+            enhancedConnectionDetails
+          );
+          
+          // Add context ID to SQL for later retrieval
+          translationResult.sql = this.queryContextManager.addContextIdToSql(translationResult.sql, contextId);
+          
+          logFlow('SERVER', 'INFO', 'Created query context for enhanced error correction', {
+            contextId,
+            sessionId
+          });
+        }
+      }
 
       // Step 2: Check if this is a report query
       if (translationResult.isReportQuery && translationResult.reportType) {

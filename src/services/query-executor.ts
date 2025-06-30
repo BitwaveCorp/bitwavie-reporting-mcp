@@ -7,6 +7,7 @@
 
 import { BigQuery } from '@google-cloud/bigquery';
 import { logFlow } from '../utils/logging.js';
+import { QueryContextManager } from './query-context-manager.js';
 import { LLMQueryTranslator } from './llm-query-translator.js';
 import { ConnectionManager } from './connection-manager.js';
 
@@ -50,7 +51,8 @@ export interface ConnectionDetails {
 
 export class QueryExecutor {
   private bigquery: BigQuery;
-  private llmTranslator: LLMQueryTranslator | null = null;
+  private llmTranslator: LLMQueryTranslator;
+  private queryContextManager: QueryContextManager | null = null;
   private config: ExecutionConfig = {
     maxRetries: 2,
     timeoutMs: 30000,
@@ -73,8 +75,14 @@ export class QueryExecutor {
       projectId
     });
     
-    // Set LLM translator if provided (for error correction)
-    this.llmTranslator = llmTranslator || null;
+    // Set LLM translator if provided
+    if (llmTranslator) {
+      this.llmTranslator = llmTranslator;
+    } else {
+      // We should never reach here in practice as the translator should always be provided
+      throw new Error('LLMQueryTranslator is required');
+    }
+    this.queryContextManager = new QueryContextManager(); 
     
     // Apply custom config if provided
     if (config) {
@@ -106,6 +114,18 @@ export class QueryExecutor {
     originalPrompt?: string,
     userQuery?: string
   ): Promise<ExecutionResult> {
+    
+    // Log the parameters for debugging
+    logFlow('QUERY_EXECUTOR', 'INFO', 'Execute query parameters', {
+      sqlLength: sql.length,
+      hasParameters: !!parameters,
+      hasConnectionDetails: !!connectionDetails,
+      hasOriginalPrompt: !!originalPrompt,
+      originalPromptLength: originalPrompt?.length || 0,
+      hasUserQuery: !!userQuery,
+      userQueryLength: userQuery?.length || 0,
+      schemaType: connectionDetails?.schemaType || 'Not provided'
+    });
     const startTime = Date.now();
     let retryCount = 0;
     let currentSql = sql;
@@ -132,14 +152,26 @@ export class QueryExecutor {
           retryCount
         });
         
-        // If we have the original prompt and user query, use enhanced error correction
-        if (originalPrompt && userQuery) {
+        // First, try to get context from SQL comment if available
+        let contextId = this.queryContextManager?.extractContextIdFromSql(currentSql);
+        let context = contextId ? this.queryContextManager?.getContext(contextId) : undefined;
+        
+        // If context is available, use it; otherwise fall back to parameters
+        const contextPrompt = context?.originalPrompt || originalPrompt || '';
+        const contextUserQuery = context?.userQuery || userQuery || '';
+        
+        // If we have the original prompt and user query (from either source), use enhanced error correction
+        if (contextPrompt && contextUserQuery) {
+          logFlow('QUERY_EXECUTOR', 'INFO', 'Using enhanced error correction', {
+            source: context ? 'query_context' : 'parameters',
+            hasContextId: !!contextId
+          });
           try {
             const correction = await this.llmTranslator.correctSQLWithExplanation(
-              originalPrompt,
+              contextPrompt,
               currentSql,
               validationError.message,
-              userQuery
+              contextUserQuery
             );
             
             // If we got a corrected SQL, try that
