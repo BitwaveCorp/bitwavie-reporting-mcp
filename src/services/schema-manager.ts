@@ -395,7 +395,20 @@ export class SchemaManager {
       return "No schema information available.";
     }
     
-    let schemaText = `Table Schema (${this.config?.tableId}):\n\n`;
+    // Get the session connection details
+    const connectionManager = ConnectionManager.getInstance();
+    const sessionDetails = connectionManager.getSessionConnectionDetails();
+    
+    // Get the table ID with proper fallback
+    const tableId = connectionManager.getTableId(sessionDetails) ||'';
+    
+    // Extract the base table name without organization prefix if needed
+    // For tables like "orgid_gl_actions", we want to show just "gl_actions"
+    const baseTableName = tableId;
+    
+    console.log(`SCHEMA_CONTEXT_DEBUG: Using table ID ${baseTableName} for schema (original: ${tableId})`);
+    
+    let schemaText = `Table Schema (${baseTableName}):\n\n`;
     
     // Check if we have a known schema type
     const schemaType = this.config?.schemaType ? 
@@ -576,7 +589,20 @@ export class SchemaManager {
   private getSchemaForLLMFromKnownType(schemaType: SchemaTypeDefinition): string {
     console.log(`SCHEMA_CHOICE4: Generating schema info for ${schemaType.id}`);
     
-    let schemaText = `Table Schema (${this.config?.tableId}) - Type: ${schemaType.name}\n\n`;
+    // Get the session connection details
+    const connectionManager = ConnectionManager.getInstance();
+    const sessionDetails = connectionManager.getSessionConnectionDetails();
+    
+    // Get the table ID with proper fallback
+    const tableId = connectionManager.getTableId(sessionDetails) || this.config?.tableId || 'actions';
+    
+    // Extract the base table name without organization prefix if needed
+    // For tables like "orgid_gl_actions", we want to show just "gl_actions"
+    const baseTableName = tableId;
+    
+    console.log(`SCHEMA_CONTEXT_DEBUG: Using table ID ${baseTableName} for schema type ${schemaType.id} (original: ${tableId})`);
+    
+    let schemaText = `Table Schema (${baseTableName}) - Type: ${schemaType.name}\n\n`;
     schemaText += `${schemaType.description}\n\n`;
     
     // Use schema-specific categories if available, otherwise use default categories
@@ -593,9 +619,22 @@ export class SchemaManager {
       // Add an "Other" category for uncategorized columns
       categories['Other'] = [];
       
-      // Categorize columns based on schema type definition
-      if (this.schema && this.schema.columns) {
-        this.schema.columns.forEach(col => {
+      // Only use columns that are explicitly defined in the schema type's columnDescriptions
+      if (this.schema && this.schema.columns && schemaType.columnDescriptions) {
+        console.log(`SCHEMA_CONTEXT_DEBUG: Schema has ${this.schema.columns.length} total columns`);
+        console.log(`SCHEMA_CONTEXT_DEBUG: Schema type ${schemaType.id} has ${Object.keys(schemaType.columnDescriptions).length} defined columns`);
+        console.log(`SCHEMA_CONTEXT_DEBUG: Schema type ${schemaType.id} has categories: ${Object.keys(schemaType.columnCategories || {}).join(', ')}`);
+        
+        // Get the list of columns defined in the schema type
+        const definedColumns = Object.keys(schemaType.columnDescriptions);
+        
+        // Filter the schema columns to only include those defined in the schema type
+        const filteredColumns = this.schema.columns.filter(col => definedColumns.includes(col.name));
+        
+        console.log(`SCHEMA_CONTEXT_DEBUG: Using ${filteredColumns.length} columns out of ${this.schema.columns.length} total columns`);
+        
+        // Categorize the filtered columns based on schema type definition
+        filteredColumns.forEach(col => {
           let categorized = false;
           
           // Find which category this column belongs to
@@ -615,6 +654,18 @@ export class SchemaManager {
           }
         });
       }
+      
+      // Log which columns were actually categorized
+      Object.entries(categories).forEach(([category, cols]) => {
+        if (cols.length > 0) {
+          console.log(`SCHEMA_CONTEXT_DEBUG: After categorization, ${category} has ${cols.length} columns: ${cols.map(c => c.name).join(', ')}`);
+          logFlow('SCHEMA_MANAGER', 'INFO', `After categorization, schema category ${category} includes ${cols.length} columns`, {
+            schemaType: schemaType.id,
+            category,
+            columns: cols.map(c => c.name)
+          });
+        }
+      });
     } else {
       console.log('SCHEMA_CHOICE6: No schema-specific categories, using generic categorization');
       // Fall back to generic categorization
