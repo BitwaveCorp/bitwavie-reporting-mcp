@@ -14,9 +14,9 @@ import { logFlow } from '../utils/logging.js';
 
 export interface SchemaContext {
   schemaType: string;
-  projectId?: string;
-  datasetId?: string;
-  tableId?: string;
+  projectId?: string | undefined;
+  datasetId?: string | undefined;
+  tableId?: string | undefined;
   timestamp: number;
 }
 
@@ -56,13 +56,17 @@ export class SchemaContextManager {
     tableId?: string
   ): string {
     const contextId = uuidv4();
-    const context: SchemaContext = {
+    
+    // Create context with only the required properties first
+    const context = {
       schemaType,
-      projectId: projectId || undefined,
-      datasetId: datasetId || undefined,
-      tableId: tableId || undefined,
       timestamp: Date.now()
-    };
+    } as SchemaContext;
+    
+    // Add optional properties only if they are defined
+    if (projectId) context.projectId = projectId;
+    if (datasetId) context.datasetId = datasetId;
+    if (tableId) context.tableId = tableId;
 
     this.contexts.set(contextId, context);
 
