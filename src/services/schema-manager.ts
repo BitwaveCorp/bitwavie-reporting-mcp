@@ -619,40 +619,78 @@ export class SchemaManager {
       // Add an "Other" category for uncategorized columns
       categories['Other'] = [];
       
-      // Only use columns that are explicitly defined in the schema type's columnDescriptions
-      if (this.schema && this.schema.columns && schemaType.columnDescriptions) {
-        console.log(`SCHEMA_CONTEXT_DEBUG: Schema has ${this.schema.columns.length} total columns`);
-        console.log(`SCHEMA_CONTEXT_DEBUG: Schema type ${schemaType.id} has ${Object.keys(schemaType.columnDescriptions).length} defined columns`);
-        console.log(`SCHEMA_CONTEXT_DEBUG: Schema type ${schemaType.id} has categories: ${Object.keys(schemaType.columnCategories || {}).join(', ')}`);
-        
-        // Get the list of columns defined in the schema type
-        const definedColumns = Object.keys(schemaType.columnDescriptions);
-        
-        // Filter the schema columns to only include those defined in the schema type
-        const filteredColumns = this.schema.columns.filter(col => definedColumns.includes(col.name));
-        
-        console.log(`SCHEMA_CONTEXT_DEBUG: Using ${filteredColumns.length} columns out of ${this.schema.columns.length} total columns`);
-        
-        // Categorize the filtered columns based on schema type definition
-        filteredColumns.forEach(col => {
-          let categorized = false;
-          
-          // Find which category this column belongs to
-          for (const [category, columnNames] of Object.entries(schemaType.columnCategories || {})) {
-            if (Array.isArray(columnNames) && columnNames.includes(col.name)) {
-              if (categories[category]) {
-                categories[category].push(col);
+      // Get the list of columns defined in the schema type
+      const definedColumns = Object.keys(schemaType.columnDescriptions || {});
+      
+      console.log(`SCHEMA_CONTEXT_DEBUG: Schema type ${schemaType.id} has ${definedColumns.length} defined columns`);
+      console.log(`SCHEMA_CONTEXT_DEBUG: Schema type ${schemaType.id} has categories: ${Object.keys(schemaType.columnCategories || {}).join(', ')}`);
+      
+      // Directly use the column categories from the schema type registry
+      for (const [category, columnNames] of Object.entries(schemaType.columnCategories)) {
+        if (Array.isArray(columnNames) && columnNames.length > 0) {
+          // For each column in this category
+          columnNames.forEach(colName => {
+            // Only include columns that are defined in columnDescriptions
+            if (definedColumns.includes(colName)) {
+              // Try to find the column in the actual schema first
+              const actualColumn = this.schema?.columns?.find(col => col.name === colName);
+              
+              // Create a column object (either from actual schema or synthetic)
+              const col = actualColumn || {
+                name: colName,
+                type: 'STRING', // Default type
+                description: schemaType.columnDescriptions?.[colName] || `${colName} column`,
+                mode: 'NULLABLE',
+                aggregatable: this.isLikelyAggregatable(colName),
+                sampleValues: [],
+                statistics: {}
+              };
+              
+              // Add to the appropriate category
+              if (!categories[category]) {
+                categories[category] = [];
               }
-              categorized = true;
-              break;
+              categories[category].push(col);
             }
+          });
+        }
+      }
+      
+      // Check for any defined columns that aren't in any category and add to "Other"
+      definedColumns.forEach(colName => {
+        let inCategory = false;
+        
+        // Check if this column is in any category
+        for (const columnNames of Object.values(schemaType.columnCategories ?? {})) {
+          if (Array.isArray(columnNames) && columnNames.includes(colName)) {
+            inCategory = true;
+            break;
           }
+        }
+        
+        // If not in any category, add to "Other"
+        if (!inCategory) {
+          const actualColumn = this.schema?.columns?.find(col => col.name === colName);
           
-          // If not found in any category, add to "Other"
-          if (!categorized && categories['Other']) {
+          const col = actualColumn || {
+            name: colName,
+            type: 'STRING', // Default type
+            description: schemaType.columnDescriptions?.[colName] || `${colName} column`,
+            mode: 'NULLABLE',
+            aggregatable: this.isLikelyAggregatable(colName),
+            sampleValues: [],
+            statistics: {}
+          };
+          
+          if (categories['Other']) {
             categories['Other'].push(col);
           }
-        });
+        }
+      });
+      
+      console.log(`SCHEMA_CONTEXT_DEBUG: Using ${definedColumns.length} defined columns from schema type registry`);
+      if (this.schema?.columns) {
+        console.log(`SCHEMA_CONTEXT_DEBUG: Actual schema has ${this.schema.columns.length} columns`);
       }
       
       // Log which columns were actually categorized
@@ -784,6 +822,31 @@ export class SchemaManager {
       });
     }
     
+    // Add column mappings if available
+    if (schemaType.columnMappings && schemaType.columnMappings.length > 0) {
+      schemaText += "Helper Natural Language to Schema Mappings:\n";
+      schemaType.columnMappings.forEach((mapping) => {
+        schemaText += `- ${mapping.domainConcept}:\n`;
+        schemaText += `  Columns: ${mapping.columnNames.join(', ')}\n`;
+        if (mapping.aliases && mapping.aliases.length > 0) {
+          schemaText += `  Aliases: ${mapping.aliases.join(', ')}\n`;
+        }
+        if (mapping.description) {
+          schemaText += `  Description: ${mapping.description}\n`;
+        }
+        schemaText += '\n';
+      });
+    }
+    
+    // Add learnings if available
+    if (schemaType.learnings && schemaType.learnings.length > 0) {
+      schemaText += "Learnings and Best Practices:\n";
+      schemaType.learnings.forEach((learning) => {
+        schemaText += `- ${learning}\n`;
+      });
+      schemaText += '\n';
+    }
+    
     return schemaText;
   }
 
@@ -830,8 +893,44 @@ export class SchemaManager {
       return;
     }
     
+    // Get the latest session connection details
+    const connectionManager = ConnectionManager.getInstance();
+    const sessionDetails = connectionManager.getSessionConnectionDetails();
+    
+    // Get the table ID with proper fallback
+    const projectId = connectionManager.getProjectId(sessionDetails) || this.config?.projectId;
+    const datasetId = connectionManager.getDatasetId(sessionDetails) || this.config?.datasetId;
+    const tableId = connectionManager.getTableId(sessionDetails) || this.config?.tableId;
+    const privateKey = connectionManager.getPrivateKey(sessionDetails);
+    
+    // Initialize BigQuery client with appropriate auth
+    const clientOptions: any = { projectId };
+    
+    // If private key is available, use it for authentication
+    if (privateKey) {
+      try {
+        const credentials = JSON.parse(privateKey);
+        clientOptions.credentials = credentials;
+        logFlow('SCHEMA_MANAGER', 'INFO', 'Using private key authentication for BigQuery');
+      } catch (error) {
+        logFlow('SCHEMA_MANAGER', 'ERROR', 'Failed to parse private key JSON', { error });
+      }
+    }
+    
+    this.bigquery = new BigQuery(clientOptions);
+    this.dataset = connectionManager.getDatasetId(sessionDetails) ? this.bigquery.dataset(connectionManager.getDatasetId(sessionDetails)) : this.bigquery.dataset(datasetId || '');
+    this.table = connectionManager.getTableId(sessionDetails) ? this.dataset.table(connectionManager.getTableId(sessionDetails)) : this.dataset.table(tableId || '');
+    
+    logFlow('SCHEMA_MANAGER', 'INFO', 'Updated BigQuery connection for schema refresh', {
+      project: projectId,
+      dataset: datasetId,
+      table: tableId,
+      usingPrivateKey: !!privateKey,
+      source: 'session'
+    });
+    
     if (!this.table) {
-      throw new Error('BigQuery table not initialized. Call configure() first.');
+      throw new Error('BigQuery table not initialized after connection update.');
     }
     
     this.refreshing = true;

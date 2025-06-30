@@ -477,6 +477,7 @@ export class SchemaTypeRegistry {
         }
       ],
       semanticRules: [],
+      simpleSemanticRules: [],
       queryAspects: [
         {
           aspectType: 'aggregation',
