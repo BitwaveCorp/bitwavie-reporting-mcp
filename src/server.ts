@@ -34,7 +34,6 @@ import { BigQuery } from '@google-cloud/bigquery';
 // Session data interface definition
 interface SessionData {
   query: string;
-  originalQuery?: string; // Original query with schema context ID
   translationResult?: TranslationResult;
   confirmationResponse?: ConfirmationResponse;
   executionResult?: ExecutionResult;

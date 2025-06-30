@@ -994,9 +994,10 @@ public async correctSQLWithExplanation(
   try {
     const prompt = `Hey LLM, I am feeding you an error message and you have 2 objectives:
 
-FIRST: Your objective is to provide an explanation for the user of this error message in natural language coupled with 1 or 2 suggested prompts that they could send that may bypass this error. Please review the error  message and make sure our suggested prompts are different from their original prompt entry but yet a reasonable suggestion given the error provided. Such as suggesting a similar field name, or smaller query etc just based on  what the error is. Their original prompt in this case was [${userPrompt}]
+FIRST: Your objective is to provide an explanation for the user of this error message in natural language coupled with 1 or 2 suggested prompts that they could send that may bypass this error. Please review the error  message and make sure our suggested prompts are different from their original prompt entry but yet a reasonable suggestion given the error provided. Such as suggesting a similar field name, or smaller query etc just based on  what the error is.  Their original prompt in this case was [${userPrompt}]. Remember that the end user is not constructing sql so do not respond with messages that are purely about constructing sql statements. Focus on functional descriptions for an end user like - Your datasource doesnt appear to have an asset column or Your report is taking a lng time to run due to size and volume - these are just examples.  That an end user not a sql data analyst can makes sense out of.
+If its a column issue you could show them a list of up to 15 closely relevant columns of the schema of the datasource/table as part of the suggestions.
 
-SECOND: Your objective is to provide the SQL for one of your alternatives so we can execute it and see if it works.
+SECOND: Your objective is to provide the SQL for one of your alternatives so we can execute it and see if it works.  
 
 PRIOR CONTEXT:
 (A) ${originalQuery}
