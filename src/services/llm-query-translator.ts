@@ -441,8 +441,21 @@ Only return valid JSON. Do not include any explanations or additional text outsi
     
     logFlow('LLM_TRANSLATOR', 'ENTRY', 'Analyzing filter operations', { query });
     
+    // Construct temporary SQL for schema context extraction
+    let sql = undefined;
+    if (query) {
+      // Extract filter conditions if available
+      const schemaContextMatch = query.match(/\/\* SCHEMA_CONTEXT_ID:([0-9a-f-]+) \*\//i);
+      if (schemaContextMatch && schemaContextMatch[1]) {
+        const contextId = schemaContextMatch[1];
+        sql = `SELECT * FROM actions /* SCHEMA_CONTEXT_ID:${contextId} */`;
+        logFlow('LLM_TRANSLATOR', 'INFO', 'Created temporary SQL with schema context ID', { contextId });
+      }
+    }
+    
     // Get schema information for the prompt
-    const schemaInfo = this.schemaManager.getSchemaForLLM();
+    logFlow('LLM_TRANSLATOR', 'INFO', 'Getting schema for LLM with SQL', { hasSql: !!sql });
+    const schemaInfo = this.schemaManager.getSchemaForLLM(sql);
     
     // Create the prompt for filter operations
     const filterPrompt = `You are an expert SQL translator specializing in BigQuery. Your task is to analyze a natural language query and extract the filter operations (WHERE clause) that define the population of data to analyze.
