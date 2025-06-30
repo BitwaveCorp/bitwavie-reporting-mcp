@@ -546,7 +546,16 @@ If there are no explicit filters in the query, use a default filter that include
     // Get schema information for the prompt
     // Pass the SQL query if available to ensure schema context is extracted
     // This is critical for analyze mode where schema context ID is embedded in SQL
-    const sql = filterComponents.sqlClause ? `SELECT * FROM actions WHERE ${filterComponents.sqlClause}` : undefined;
+    let sql = filterComponents.sqlClause ? `SELECT * FROM actions WHERE ${filterComponents.sqlClause}` : undefined;
+
+    // Extract schema context ID from original query and append it to the SQL if present
+    const schemaContextMatch = query.match(/\/\* SCHEMA_CONTEXT_ID:([0-9a-f-]+) \*\//i);
+    if (sql && schemaContextMatch && schemaContextMatch[1]) {
+      const contextId = schemaContextMatch[1];
+      sql += ` /* SCHEMA_CONTEXT_ID:${contextId} */`;
+      logFlow('LLM_TRANSLATOR', 'INFO', 'Appended schema context ID to temporary SQL', { contextId });
+    }
+    
     logFlow('LLM_TRANSLATOR', 'INFO', 'Getting schema for LLM with SQL', { hasSql: !!sql });
     const schemaInfo = this.schemaManager.getSchemaForLLM(sql);
     const aggregatableColumns = this.schemaManager.getAggregatableColumns();
@@ -780,6 +789,14 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     // Add LIMIT clause if specified
     if (aggregationComponents.limitClause) {
       sql += `\nLIMIT ${aggregationComponents.limitClause}`;
+    }
+    
+    // Preserve schema context ID from the original query if present
+    const schemaContextMatch = query.match(/\/\* SCHEMA_CONTEXT_ID:([0-9a-f-]+) \*\//i);
+    if (schemaContextMatch && schemaContextMatch[1]) {
+      const contextId = schemaContextMatch[1];
+      logFlow('LLM_TRANSLATOR', 'INFO', 'Preserving schema context ID in generated SQL', { contextId });
+      sql += ` /* SCHEMA_CONTEXT_ID:${contextId} */`;
     }
     
     // Create an interpreted query description
