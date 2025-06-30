@@ -21,7 +21,7 @@ import { SchemaTypeRegistry } from './services/schema-type-registry.js';
 // Import the TranslationResult interface directly to ensure we have the latest version
 import type { TranslationResult } from './services/llm-query-translator.js';
 import { QueryConfirmationFormatter } from './services/query-confirmation-formatter.js';
-import { QueryExecutor } from './services/query-executor.js';
+import { QueryExecutor, ConnectionDetails } from './services/query-executor.js';
 import { ResultFormatter } from './services/result-formatter.js';
 
 // Import legacy services
@@ -2390,11 +2390,12 @@ export class ReportingMCPServer {
     } 
     // Then check if connection details are in the session (from express session)
     else if (req?.session?.connectionDetails) {
-      connectionDetails = {
-        projectId: req.session.connectionDetails.projectId || '',
-        datasetId: req.session.connectionDetails.datasetId || '',
-        tableId: req.session.connectionDetails.tableId || '',
-        privateKey: (req.session as any).privateKey || ''
+      const enhancedConnectionDetails = {
+        projectId: (req.session as any).connectionDetails?.projectId || '',
+        datasetId: (req.session as any).connectionDetails?.datasetId || '',
+        tableId: (req.session as any).connectionDetails?.tableId || '',
+        privateKey: (req.session as any).privateKey || '',
+        schemaType: (req.session as any).connectionDetails?.schemaType || ''
       };
       (connectionDetails as any).session = req.session;
     }
@@ -2456,7 +2457,7 @@ export class ReportingMCPServer {
       }
       
       // Extract connection details from request if available
-      let enhancedConnectionDetails: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string } | undefined;
+      let enhancedConnectionDetails: ConnectionDetails | undefined;
       
       // First check if connection details are in the request parameter (from simple-http-server)
       if (req?.body?.connectionDetails) {
@@ -2477,7 +2478,9 @@ export class ReportingMCPServer {
           datasetId: req.session.connectionDetails.datasetId || '',
           tableId: req.session.connectionDetails.tableId || '',
           // Get privateKey from session if it exists
-          privateKey: (req.session as any).privateKey || ''
+          privateKey: (req.session as any).privateKey || '',
+          // Get schemaType from session if it exists
+          schemaType: req.session.connectionDetails.schemaType || ''
         };
         
         // Add session object reference to help ConnectionManager find privateKey
@@ -2489,6 +2492,7 @@ export class ReportingMCPServer {
           datasetId: enhancedConnectionDetails.datasetId || 'Not provided',
           tableId: enhancedConnectionDetails.tableId || 'Not provided',
           hasPrivateKey: !!(req.session as any).privateKey,
+          schemaType: enhancedConnectionDetails.schemaType || 'Not provided',
           source: 'session'
         });
         
@@ -2508,6 +2512,7 @@ export class ReportingMCPServer {
         datasetId: enhancedConnectionDetails?.datasetId || 'Not provided',
         tableId: enhancedConnectionDetails?.tableId || 'Not provided',
         hasPrivateKey: !!enhancedConnectionDetails?.privateKey,
+        schemaType: enhancedConnectionDetails?.schemaType || 'Not provided',
         source: enhancedConnectionDetails ? (req?.body?.connectionDetails ? 'request.body' : 'session') : 'environment'
       });
       

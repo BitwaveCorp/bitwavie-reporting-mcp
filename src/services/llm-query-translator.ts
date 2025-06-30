@@ -268,7 +268,7 @@ Only return valid JSON. Do not include any explanations or additional text outsi
   public async translateQuery(
     query: string, 
     previousContext?: string,
-    connectionDetails?: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string }
+    connectionDetails?: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string, schemaType?: string }
   ): Promise<TranslationResult> {
     if (!this.anthropic) {
       throw new Error('Anthropic client not initialized');
@@ -278,6 +278,8 @@ Only return valid JSON. Do not include any explanations or additional text outsi
       query, 
       hasPreviousContext: !!previousContext,
       hasConnectionDetails: !!connectionDetails,
+      hasSchemaType: !!connectionDetails?.schemaType,
+      schemaType: connectionDetails?.schemaType || 'Not provided',
       connectionSource: connectionDetails ? 'session' : 'environment'
     });
 
@@ -627,7 +629,7 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
       limitClause: string;
       confidence: number;
     },
-    connectionDetails?: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string }
+    connectionDetails?: { projectId?: string, datasetId?: string, tableId?: string, privateKey?: string, schemaType?: string }
   ): Promise<{
     sql: string;
     interpretedQuery: string;
@@ -656,7 +658,8 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
         projectId: connectionDetails.projectId || '',
         datasetId: connectionDetails.datasetId || '',
         tableId: connectionDetails.tableId || '',
-        privateKey: connectionDetails.privateKey || ''
+        privateKey: connectionDetails.privateKey || '',
+        schemaType: connectionDetails.schemaType || ''
       };
     }
     
@@ -669,6 +672,8 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
       hasProjectId: !!connectionDetails?.projectId,
       hasDatasetId: !!connectionDetails?.datasetId,
       hasTableId: !!connectionDetails?.tableId,
+      hasSchemaType: !!connectionDetails?.schemaType,
+      schemaType: connectionDetails?.schemaType || 'Not provided',
       source: connectionDetails && (connectionDetails.projectId || connectionDetails.datasetId || connectionDetails.tableId) ? 'session' : 'environment'
     });
 
