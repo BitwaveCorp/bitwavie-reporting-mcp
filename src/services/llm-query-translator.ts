@@ -533,7 +533,11 @@ If there are no explicit filters in the query, use a default filter that include
     });
     
     // Get schema information for the prompt
-    const schemaInfo = this.schemaManager.getSchemaForLLM();
+    // Pass the SQL query if available to ensure schema context is extracted
+    // This is critical for analyze mode where schema context ID is embedded in SQL
+    const sql = filterComponents.sqlClause ? `SELECT * FROM actions WHERE ${filterComponents.sqlClause}` : undefined;
+    logFlow('LLM_TRANSLATOR', 'INFO', 'Getting schema for LLM with SQL', { hasSql: !!sql });
+    const schemaInfo = this.schemaManager.getSchemaForLLM(sql);
     const aggregatableColumns = this.schemaManager.getAggregatableColumns();
     
     // Create the prompt for aggregation operations
@@ -827,6 +831,13 @@ SQL Clause: ${aggregationComponents.limitClause}
 ${sql}
 `;
     
+    // Pass the final SQL to SchemaManager to ensure schema context is extracted
+    // This is critical for analyze mode where schema context ID is embedded in SQL
+    if (this.schemaManager && sql) {
+      logFlow('LLM_TRANSLATOR', 'INFO', 'Passing final SQL to SchemaManager for schema context extraction');
+      this.schemaManager.getSchemaForLLM(sql);
+    }
+    
     logFlow('LLM_TRANSLATOR', 'EXIT', 'SQL generation completed', {
       sqlLength: sql.length,
       confidence,
@@ -972,9 +983,9 @@ public async correctSQLWithExplanation(
   try {
     const prompt = `Hey LLM, I am feeding you an error message and you have 2 objectives:
 
-FIRST: Your objective is to provide an explanation for the user of this error message in natural language coupled with 1 or 2 suggested prompts that they could send that may bypass this error. Remember that the suggested prompts should be similar to their original prompt entry which in this case was [${userPrompt}]
+FIRST: Your objective is to provide an explanation for the user of this error message in natural language coupled with 1 or 2 suggested prompts that they could send that may bypass this error. Please review the error  message and make sure our suggested prompts are different from their original prompt entry but yet a reasonable suggestion given the error provided. Such as suggesting a similar field name, or smaller query etc just based on  what the error is. Their original prompt in this case was [${userPrompt}]
 
-SECOND: Your objective is to execute one of those alternatives and provide the SQL for it as well.
+SECOND: Your objective is to provide the SQL for one of your alternatives so we can execute it and see if it works.
 
 PRIOR CONTEXT:
 (A) ${originalQuery}
