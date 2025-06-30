@@ -247,13 +247,43 @@ app.post('/rpc', async (req, res) => {
             // Get current connection details (from session or environment variables)
             const connectionDetails = getCurrentConnectionDetails();
             
-            // Add connection details to the request
-            const analyzeResult = await mcpServer.handleAnalyzeData({
+            // Prepare request data with connection details
+            const requestWithConnection = {
               query: requestData.query,
               confirmedMappings: requestData.confirmedMappings,
               previousResponse: requestData.previousResponse,
               connectionDetails: connectionDetails
-            });
+            };
+            
+            // Handle schema context if schemaType is available
+            if (connectionDetails.schemaType && mcpServer.schemaContextManager) {
+              console.log('[SIMPLE-HTTP] SchemaType detected:', connectionDetails.schemaType);
+              try {
+                // Create schema context
+                const schemaContextId = mcpServer.schemaContextManager.createContext(
+                  connectionDetails.schemaType,
+                  connectionDetails.projectId,
+                  connectionDetails.datasetId,
+                  connectionDetails.tableId
+                );
+                
+                console.log('[SIMPLE-HTTP] Created schema context ID:', schemaContextId);
+                
+                // Embed context ID in the query if query exists
+                if (requestWithConnection.query && schemaContextId) {
+                  const originalQuery = requestWithConnection.query;
+                  requestWithConnection.query = mcpServer.schemaContextManager.embedContextId(requestWithConnection.query, schemaContextId);
+                  console.log('[SIMPLE-HTTP] Embedded schema context ID in query');
+                  console.log('[SIMPLE-HTTP] Original query:', originalQuery);
+                  console.log('[SIMPLE-HTTP] Modified query:', requestWithConnection.query);
+                }
+              } catch (error) {
+                console.error('[SIMPLE-HTTP] Error creating/embedding schema context:', error);
+              }
+            }
+            
+            // Process the analyze data request
+            const analyzeResult = await mcpServer.handleAnalyzeData(requestWithConnection);
             
             console.log('[SIMPLE-HTTP] Using connection details for query:', JSON.stringify({
               projectId: connectionDetails.projectId,
