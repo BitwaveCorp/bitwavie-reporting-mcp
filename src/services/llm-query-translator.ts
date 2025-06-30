@@ -305,7 +305,7 @@ Only return valid JSON. Do not include any explanations or additional text outsi
       const reportDetection = await this.detectReportQuery(query);
       
       // If this is a high-confidence report query, return early with report info
-      if (reportDetection.isReportQuery && reportDetection.confidence > 0.8 && reportDetection.reportType) {
+      if (reportDetection.isReportQuery && reportDetection.confidence > 0.95 && reportDetection.reportType) {
         const processingSteps = [
           {
             step: 'Report Detection',
