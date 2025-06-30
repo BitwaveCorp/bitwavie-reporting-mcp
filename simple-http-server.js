@@ -272,10 +272,39 @@ app.post('/rpc', async (req, res) => {
                 // Embed context ID in the query if query exists
                 if (requestWithConnection.query && schemaContextId) {
                   const originalQuery = requestWithConnection.query;
+                  
+                  // Verify query before embedding
+                  console.log('[SIMPLE-HTTP] Before embedding - query details:', {
+                    query: requestWithConnection.query,
+                    queryType: typeof requestWithConnection.query,
+                    queryLength: requestWithConnection.query.length
+                  });
+                  
+                  // Embed context ID
                   requestWithConnection.query = mcpServer.schemaContextManager.embedContextId(requestWithConnection.query, schemaContextId);
+                  
+                  // Verify query after embedding
+                  console.log('[SIMPLE-HTTP] After embedding - query details:', {
+                    query: requestWithConnection.query,
+                    queryType: typeof requestWithConnection.query,
+                    queryLength: requestWithConnection.query.length
+                  });
+                  
                   console.log('[SIMPLE-HTTP] Embedded schema context ID in query');
                   console.log('[SIMPLE-HTTP] Original query:', originalQuery);
                   console.log('[SIMPLE-HTTP] Modified query:', requestWithConnection.query);
+                  
+                  // Ensure the query wasn't lost
+                  if (requestWithConnection.query.indexOf(originalQuery) === -1) {
+                    console.error('[SIMPLE-HTTP] WARNING: Original query text not found in modified query!');
+                    // Force append the original query if it was lost
+                    if (requestWithConnection.query.includes('SCHEMA_CONTEXT_ID') && 
+                        !requestWithConnection.query.includes(originalQuery)) {
+                      console.log('[SIMPLE-HTTP] Fixing query by appending original text');
+                      requestWithConnection.query = `${requestWithConnection.query} ${originalQuery}`;
+                      console.log('[SIMPLE-HTTP] Fixed query:', requestWithConnection.query);
+                    }
+                  }
                 }
               } catch (error) {
                 console.error('[SIMPLE-HTTP] Error creating/embedding schema context:', error);

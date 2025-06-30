@@ -105,7 +105,25 @@ export class SchemaContextManager {
    * @returns The query with the embedded context ID
    */
   public embedContextId(query: string, contextId: string): string {
-    return `/* SCHEMA_CONTEXT_ID:${contextId} */\n${query}`;
+    console.log('[SchemaContextManager] embedContextId input:', {
+      query,
+      queryType: typeof query,
+      queryLength: query?.length,
+      contextId
+    });
+    
+    // Make sure query is a string
+    const safeQuery = typeof query === 'string' ? query : '';
+    
+    // Put the schema context ID at the end of the query
+    const result = `${safeQuery} /* SCHEMA_CONTEXT_ID:${contextId} */`;
+    
+    console.log('[SchemaContextManager] embedContextId output:', {
+      result,
+      resultLength: result.length
+    });
+    
+    return result;
   }
 
   /**
