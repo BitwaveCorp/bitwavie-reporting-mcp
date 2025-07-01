@@ -200,6 +200,7 @@ IMPORTANT INSTRUCTIONS:
 5. Match parameters to the required parameters for the identified report.
 6. If the report requires parameters that weren't provided, note them as missing.
 7. Pay special attention to the parameter patterns - each report has specific parameter requirements that can help identify it.
+8. Columns are generally in string so try to use SAFE_CAST(xxx as BIGNUMERIC) anytime you are calculating to prevent errors.
 
 Analyze the query and respond in JSON format with the following structure:
 {
@@ -472,6 +473,7 @@ Identify the filter conditions that define WHICH data should be included in the 
 5. Null handling (IS NULL, IS NOT NULL)
 6. Date/time filters (specific dates, relative dates like "last 30 days")
 7. Complex logic with AND/OR relationships and proper parenthetical grouping
+8. As a note remember that Columns are generally in string so try to use coalesce(SAFE_CAST(YOURCOLUMN as BIGNUMERIC), 0) anytime you are calculating a numeric value to prevent errors.
 
 Respond in JSON format with the following structure:
 {
@@ -591,6 +593,8 @@ Now, identify the aggregation and selection operations that define WHAT results 
 3. Sorting criteria (ORDER BY with ASC/DESC)
 4. Result limits (LIMIT)
 5. Window functions (ROW_NUMBER, RANK, etc.)
+6. As a note remember that Columns are generally in string so try to use coalesce(SAFE_CAST(YOURCOLUMN as BIGNUMERIC), 0) anytime you are calculating a numeric value to prevent errors.
+
 
 Respond in JSON format with the following structure:
 {
@@ -1028,6 +1032,8 @@ FIRST: Your objective is to provide an explanation for the user of this error me
 If its a column issue you could show them a list of up to 15 closely relevant columns of the schema of the datasource/table as part of the suggestions.
 
 SECOND: Your objective is to provide the SQL for one of your alternatives so we can execute it and see if it works.  
+
+As a note remember that Columns are generally in string so try to use coalesce(SAFE_CAST(xxx as BIGNUMERIC), 0) anytime you are calculating a numeric value to prevent errors.
 
 PRIOR CONTEXT:
 (A) ${originalQuery}
