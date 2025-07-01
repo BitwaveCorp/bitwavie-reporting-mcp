@@ -817,10 +817,10 @@ If the query doesn't specify any aggregation, default to selecting all columns.`
     }
     
     // Create an interpreted query description
-    let interpretedQuery = "I understand you want to ";
+    let interpretedQuery = "Key Query Notes:";
     
     if (filterComponents.description) {
-      interpretedQuery += `find data where ${filterComponents.description}`;
+      interpretedQuery += `  ${filterComponents.description}`;
     } else {
       interpretedQuery += "analyze all data";
     }

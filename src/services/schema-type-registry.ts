@@ -208,7 +208,7 @@ export class SchemaTypeRegistry {
         {
           description: 'Total gain/loss by asset',
           query: 'What is the total gain or loss for each cryptocurrency asset?',
-          sql: 'SELECT asset, SUM(shortTermGainLoss + longTermGainLoss + undatedGainLoss) as totalGainLoss FROM `table` GROUP BY asset ORDER BY totalGainLoss DESC'
+          sql: 'SELECT asset, SUM(COALESCE(CAST(shortTermGainLoss AS bignumeric), 0) + COALESCE(CAST(longTermGainLoss AS bignumeric), 0) + COALESCE(CAST(undatedGainLoss AS bignumeric), 0)) as totalGainLoss FROM `table` GROUP BY asset ORDER BY totalGainLoss DESC'
         },
         {
           description: 'Transaction count by action type',
