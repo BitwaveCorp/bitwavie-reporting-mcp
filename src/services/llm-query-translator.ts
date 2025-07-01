@@ -951,7 +951,21 @@ Respond with ONLY the corrected SQL query, nothing else.`;
         throw new Error('Failed to extract corrected SQL');
       }
       
-      const correctedSql = sqlMatch[1].trim();
+      let correctedSql = sqlMatch[1].trim();
+      
+      // Check for duplicate SELECT statements (case insensitive)
+      const selectRegex = /^\s*SELECT\s+SELECT\s+/i;
+      if (selectRegex.test(correctedSql)) {
+        // Remove the first SELECT keyword
+        const sanitizedSQL = correctedSql.replace(/^\s*SELECT\s+/i, '');
+        
+        logFlow('LLM_TRANSLATOR', 'INFO', 'Removed duplicate SELECT keyword', { 
+          originalSQL: correctedSql,
+          sanitizedSQL: sanitizedSQL
+        });
+        
+        correctedSql = sanitizedSQL;
+      }
       
       logFlow('LLM_TRANSLATOR', 'EXIT', 'SQL correction completed', {
         originalLength: sql.length,
@@ -1074,10 +1088,28 @@ Please respond in the following JSON format:
         hasCorrectedSQL: !!result.sql
       });
       
+      let correctedSql = result.sql || "";
+      
+      // Check for duplicate SELECT statements (case insensitive)
+      if (correctedSql) {
+        const selectRegex = /^\s*SELECT\s+SELECT\s+/i;
+        if (selectRegex.test(correctedSql)) {
+          // Remove the first SELECT keyword
+          const sanitizedSQL = correctedSql.replace(/^\s*SELECT\s+/i, '');
+          
+          logFlow('LLM_TRANSLATOR', 'INFO', 'Removed duplicate SELECT keyword', { 
+            originalSQL: correctedSql,
+            sanitizedSQL: sanitizedSQL
+          });
+          
+          correctedSql = sanitizedSQL;
+        }
+      }
+      
       return {
         explanation: result.explanation || `The error occurred because: ${errorMessage}`,
         suggestions: Array.isArray(result.suggestions) ? result.suggestions : [`Try rephrasing your query: "${userPrompt}"`],
-        sql: result.sql || ""
+        sql: correctedSql
       };
     } catch (parseError) {
       logFlow('LLM_TRANSLATOR', 'INFO', 'Error parsing LLM response as JSON', { 
